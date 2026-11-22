@@ -1,0 +1,65 @@
+name: flowdroid
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  phone_bridge:
+    path: packages/phone_bridge
+  battery_plus: ^7.1.2
+  crypto: ^3.0.8
+  cryptography: ^2.9.0
+  enough_mail: ^3.0.0
+  ffi: ^2.2.0
+  flutter:
+    sdk: flutter
+  flutter_foreground_task: ^11.0.3
+  flutter_local_notifications: ^23.0.3
+  flutter_secure_storage: ^11.2.0
+  flutter_tts: ^4.2.5
+  flutter_web_auth_2: ^6.0.0
+  geolocator: ^14.1.2
+  google_sign_in: ^7.2.0
+  http: ^1.6.0
+  material_ui: ^1.1.0
+  path_provider: ^2.1.6
+  url_launcher: ^6.3.3
+  vibration: ^3.2.1
+  workmanager: ^0.10.10
+  xml: ^7.1.0
+  xterm: ^4.0.0
+  flutter_pty: ^0.4.2
+  archive: ^4.7.1
+  http_parser: ^4.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: FlowIcons
+      fonts:
+        - asset: assets/fonts/FlowIcons.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-400.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-500.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-600.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-700.ttf
+          weight: 700
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-500.ttf
+          weight: 500

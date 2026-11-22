@@ -1,0 +1,13 @@
+graphify-out/
+node_modules/
+target/
+*.log
+.dart_tool/
+build/
+# Built from core/ by `make android-libs`
+app/android/app/src/main/jniLibs/
+# rust-anything build outputs
+core/flowcore/*.node
+
+# Built app; rebuild with `make apk`
+*.apk
