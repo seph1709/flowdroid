@@ -1,0 +1,15 @@
+{
+  "name": "flowdroid-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference workflow core for FlowDroid (ported to Rust with rust-anything)",
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.0"
+  }
+}

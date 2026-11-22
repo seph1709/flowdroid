@@ -1,0 +1,167 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "/home/joseph/Desktop/Maynite/joseph/n8n-android-flutter/engine-ts",
+  "unit": "src/api.ts",
+  "language": "ts",
+  "kind": "napi",
+  "crate_name": "flowcore",
+  "exports": [
+    {
+      "name": "evaluateTemplate",
+      "file": "src/api.ts",
+      "line": 22,
+      "params": [
+        {
+          "name": "template",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "contextJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "validateWorkflow",
+      "file": "src/api.ts",
+      "line": 29,
+      "params": [
+        {
+          "name": "workflowJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "nodeCatalog",
+      "file": "src/api.ts",
+      "line": 34,
+      "params": [],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "startExecution",
+      "file": "src/api.ts",
+      "line": 42,
+      "params": [
+        {
+          "name": "workflowJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "triggerNodeId",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "itemsJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "nowMs",
+          "ts_type": "number",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "resumeExecution",
+      "file": "src/api.ts",
+      "line": 51,
+      "params": [
+        {
+          "name": "workflowJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "stateJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "resultJson",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "nowMs",
+          "ts_type": "number",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "nextCronRun",
+      "file": "src/api.ts",
+      "line": 61,
+      "params": [
+        {
+          "name": "expression",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "afterMs",
+          "ts_type": "number",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "utcOffsetMinutes",
+          "ts_type": "number",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "number",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

@@ -1,0 +1,17 @@
+[package]
+name = "flowcore-ffi"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+description = "C ABI over flowcore-engine for the Flutter app (dart:ffi)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+flowcore-engine = { path = "../flowcore-engine" }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
