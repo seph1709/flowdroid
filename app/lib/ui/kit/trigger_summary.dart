@@ -17,6 +17,8 @@ String triggerSummary(String? type, JsonMap? params) {
           ? (describeCron(asString(p['cron'])) ?? 'Custom schedule')
           : 'Every ${asDouble(p['minutes'], 15).round()} min',
     'trigger.webhook' => '/webhook/${asString(p['path'])}',
+    'trigger.mcp' => 'MCP tool ${asString(p['name'], 'my_tool')}',
+    'trigger.calendar' => _calendarSummary(p),
     'trigger.telegram' => 'On Telegram messages',
     'trigger.subworkflow' => 'Called by other workflows',
     'trigger.error' => 'When a workflow fails',
@@ -34,3 +36,14 @@ String triggerSummary(String? type, JsonMap? params) {
 
 /// `powerConnected` → `power connected`.
 String _words(String id) => id.replaceAllMapped(RegExp('([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]!.toLowerCase()}');
+
+/// "5 min before events start", "When events end".
+String _calendarSummary(Map<String, Object?> p) {
+  final minutes = asDouble(p['minutes'], 5).round();
+  final end = asString(p['event'], 'start') == 'end';
+  final when = minutes == 0
+      ? (end ? 'When events end' : 'When events start')
+      : (end ? '$minutes min after events end' : '$minutes min before events start');
+  final title = asString(p['contains']).trim();
+  return title.isEmpty ? when : '$when · “$title”';
+}

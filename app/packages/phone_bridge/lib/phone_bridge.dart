@@ -4,10 +4,23 @@ import 'package:flutter/services.dart';
 
 /// Which phone features FlowDroid may use.
 class PhoneAccess {
-  const PhoneAccess({required this.sms, required this.notificationAccess});
+  const PhoneAccess({
+    required this.sms,
+    required this.notificationAccess,
+    this.calendar = false,
+    this.contacts = false,
+    this.microphone = false,
+    this.dnd = false,
+  });
 
   final bool sms;
   final bool notificationAccess;
+  final bool calendar;
+  final bool contacts;
+  final bool microphone;
+
+  /// May change Do Not Disturb (and switch the ringer to silent).
+  final bool dnd;
 }
 
 /// What can stop FlowDroid from running in the background on this phone.
@@ -113,8 +126,113 @@ class PhoneBridge {
 
   Future<PhoneAccess> access() async {
     final map = await _channel.invokeMapMethod<String, Object?>('status') ?? const {};
-    return PhoneAccess(sms: map['sms'] == true, notificationAccess: map['notificationAccess'] == true);
+    return PhoneAccess(
+      sms: map['sms'] == true,
+      notificationAccess: map['notificationAccess'] == true,
+      calendar: map['calendar'] == true,
+      contacts: map['contacts'] == true,
+      microphone: map['microphone'] == true,
+      dnd: map['dnd'] == true,
+    );
   }
+
+  /// Whether FlowDroid has `calendar`, `contacts` and/or `microphone` access,
+  /// asking for what is missing when the app is on screen.
+  Future<bool> ensurePermissions(List<String> names) async {
+    try {
+      return await _channel.invokeMethod<bool>('ensurePermissions', {'names': names}) ?? false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Opens Android's "Do Not Disturb access" screen.
+  Future<void> openDndAccess() => _channel.invokeMethod<void>('openDndAccess');
+
+  /// Calls a productivity method; its answer, or `{error}` off Android.
+  Future<Object?> _call(String method, [Map<String, Object?>? args]) async {
+    try {
+      return await _channel.invokeMethod<Object?>(method, args);
+    } on MissingPluginException {
+      return {'error': 'this step only works on Android'};
+    } on PlatformException catch (e) {
+      return {'error': e.message ?? e.code};
+    }
+  }
+
+  /// Events (repeating ones included) between [from] and [to]: `[{id, title,
+  /// start, end (epoch ms), allDay, location, description, calendar, busy}]`, or `{error}`.
+  Future<Object?> calendarEvents(DateTime from, DateTime to, String calendar) => _call('calendarEvents', {
+    'from': from.millisecondsSinceEpoch,
+    'to': to.millisecondsSinceEpoch,
+    'calendar': calendar,
+  });
+
+  /// Adds an event (`start`/`end` in epoch ms); its id, or `{error}`.
+  Future<Object?> calendarCreate(Map<String, Object?> event) => _call('calendarCreate', {'event': event});
+
+  /// `[{id, name, phones, emails}]` matching a name or number, or `{error}`.
+  Future<Object?> contactsFind(String query, int limit) => _call('contactsFind', {'query': query, 'limit': limit});
+
+  /// Adds a contact to the phone; its id, or `{error}`.
+  Future<Object?> contactsAdd(String name, String phone, String email) =>
+      _call('contactsAdd', {'name': name, 'phone': phone, 'email': email});
+
+  /// Posts an Ask Me question; the answer appears as `answers/<id>.json` in the app's documents folder.
+  Future<Object?> ask(String id, String title, String question, List<String> buttons, bool reply) =>
+      _call('ask', {'id': id, 'title': title, 'question': question, 'buttons': buttons, 'reply': reply});
+
+  Future<Object?> askCancel(String id) => _call('askCancel', {'id': id});
+
+  /// `{text, confidence, cancelled?}` or `{error}`.
+  Future<Object?> listen(String language, String prompt, int maxMs) =>
+      _call('listen', {'language': language, 'prompt': prompt, 'maxMs': maxMs});
+
+  /// Sets the ringer or Do Not Disturb; `{ringer, dnd}` as they were before, or `{error}`.
+  Future<Object?> soundMode(String mode) => _call('soundMode', {'mode': mode});
+
+  /// Sets an alarm or timer in the clock app: `{opened}`, `{notified}` or `{error}`.
+  Future<Object?> clock(Map<String, Object?> args) => _call('clock', args);
+
+  // ---------------------------------------------------------------- in-app browser
+
+  /// Loads [url] in browser [session] (made the first time, warm afterwards): `{url, title, slow?}` or `{error}`.
+  Future<Object?> browserOpen(String session, String url, {bool fast = true, int timeoutMs = 30000}) =>
+      _call('browserOpen', {'session': session, 'url': url, 'fast': fast, 'timeoutMs': timeoutMs});
+
+  /// Runs JavaScript in the page; its result as JSON text, or null when the session is gone.
+  Future<String?> browserEval(String session, String js) async {
+    final r = await _call('browserEval', {'session': session, 'js': js});
+    return r is String ? r : null;
+  }
+
+  Future<bool> browserBack(String session) async => await _call('browserBack', {'session': session}) == true;
+
+  /// Saves the visible page as a PNG at [path] inside FlowDroid's folder.
+  Future<Object?> browserScreenshot(String session, String path) =>
+      _call('browserScreenshot', {'session': session, 'path': path});
+
+  Future<Object?> browserShow(String session) => _call('browserShow', {'session': session});
+
+  Future<Object?> browserHide(String session) => _call('browserHide', {'session': session});
+
+  Future<Object?> browserClose(String session) => _call('browserClose', {'session': session});
+
+  /// Opens [url] on screen to log in; `{url}` once the person taps Done, or `{error}`.
+  Future<Object?> browserLogin(String url) => _call('browserLogin', {'url': url});
+
+  /// The browser's cookies for [url], as a Cookie header value.
+  Future<String> browserCookies(String url) async {
+    final r = await _call('browserCookies', {'url': url});
+    return r is String ? r : '';
+  }
+
+  /// Logs out of every site in the in-app browser.
+  Future<Object?> browserClearLogins() => _call('browserClearLogins');
+
+  /// A photo, gallery pick or scan: `{files: [paths], pdf?, cancelled?}` or `{error}`.
+  Future<Object?> photo(String source, {bool multiple = false, int pages = 5, bool pdf = true}) =>
+      _call('photo', {'source': source, 'multiple': multiple, 'pages': pages, 'pdf': pdf});
 
   Future<void> requestSms() => _channel.invokeMethod<void>('requestSms');
 
@@ -146,19 +264,20 @@ class PhoneBridge {
     if (_apps != null && !refresh) return _apps!;
     try {
       final raw = await _channel.invokeListMethod<Object?>('installedApps') ?? const [];
-      final apps = [
-        for (final m in raw.whereType<Map<Object?, Object?>>())
-          PhoneApp(
-            package: m['package'] as String? ?? '',
-            label: m['label'] as String? ?? '',
-            icon: m['icon'] as Uint8List? ?? Uint8List(0),
-            recentRank: m['recent'] as int? ?? -1,
-          ),
-      ]..sort((a, b) {
-          if (a.recent != b.recent) return a.recent ? -1 : 1;
-          if (a.recent) return a.recentRank.compareTo(b.recentRank);
-          return a.label.toLowerCase().compareTo(b.label.toLowerCase());
-        });
+      final apps =
+          [
+            for (final m in raw.whereType<Map<Object?, Object?>>())
+              PhoneApp(
+                package: m['package'] as String? ?? '',
+                label: m['label'] as String? ?? '',
+                icon: m['icon'] as Uint8List? ?? Uint8List(0),
+                recentRank: m['recent'] as int? ?? -1,
+              ),
+          ]..sort((a, b) {
+            if (a.recent != b.recent) return a.recent ? -1 : 1;
+            if (a.recent) return a.recentRank.compareTo(b.recentRank);
+            return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+          });
       return _apps = apps;
     } on MissingPluginException {
       return const [];
@@ -227,9 +346,7 @@ class PhoneBridge {
 
   Future<BackgroundStatus> backgroundStatus() async {
     try {
-      return BackgroundStatus.fromMap(
-        await _channel.invokeMapMethod<String, Object?>('backgroundStatus') ?? const {},
-      );
+      return BackgroundStatus.fromMap(await _channel.invokeMapMethod<String, Object?>('backgroundStatus') ?? const {});
     } on MissingPluginException {
       return const BackgroundStatus(batteryUnrestricted: true);
     }

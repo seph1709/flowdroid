@@ -55,7 +55,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                   padding: const EdgeInsets.all(Space.page),
                   child: Column(
                     children: [
-                      const IconTile(icon: AppIcons.database, color: Colors.transparent, size: 56),
+                      GlyphIcon(icon: AppIcons.database, color: AppColors.of(context).textTertiary, size: 64),
                       const SizedBox(height: Space.md),
                       Text('No knowledge bases yet', style: theme.textTheme.titleSmall),
                       const SizedBox(height: Space.xs),

@@ -18,7 +18,7 @@ import { ctxFor, itemsOf, paramText, paramValue, rows, type NodeRun, type NodeSp
 const DEFAULT_TIMEOUT_SECONDS = 30;
 
 /** Credential types HTTP Request can authenticate with. */
-export const AUTH_CREDENTIALS = ['headerAuth', 'bearerAuth', 'basicAuth', 'oauth2'];
+export const AUTH_CREDENTIALS = ['headerAuth', 'bearerAuth', 'basicAuth', 'oauth2', 'webSession'];
 
 function buildRequest(run: NodeRun, index: number): Obj {
   const url = paramText(run, 'url', index);

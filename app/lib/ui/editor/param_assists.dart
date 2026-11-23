@@ -18,6 +18,7 @@ import '../../core/node_catalog.dart';
 import '../../core/param_helpers.dart';
 import '../../core/schedule_spec.dart';
 import '../../core/workflow.dart';
+import '../../runtime/mcp_client.dart';
 import '../../runtime/speech.dart';
 import '../icons.dart';
 import '../kit/kit.dart';
@@ -51,6 +52,36 @@ bool paramVisible(WorkflowNode node, ParamSpec spec) {
   return switch ('${node.type}.${spec.key}') {
     'android.speak.credential' => p('provider', 'phone') != 'phone',
     'android.speak.style' => p('provider', 'phone') == 'openai',
+    // Claude Code uses the account signed in in Ubuntu, not a stored key.
+    'ai.chat.credential' => p('provider', 'anthropic') != 'claudeCode',
+    // Claude Code brings its own tools; FlowDroid's tool rows are for the Claude API.
+    'ai.agent.credential' || 'ai.agent.tools' => p('provider', 'anthropic') != 'claudeCode',
+    'ai.agent.access' ||
+    'ai.agent.folder' ||
+    'ai.agent.mcpServers' ||
+    'ai.agent.session' => p('provider', 'anthropic') == 'claudeCode',
+    'mcp.client.url' || 'mcp.client.credential' => p('transport', 'http') == 'http',
+    'mcp.client.server' => p('transport', 'http') == 'saved',
+    'mcp.client.command' => p('transport', 'http') == 'stdio',
+    'mcp.client.name' || 'mcp.client.arguments' => const {'callTool', 'getPrompt'}.contains(p('operation', 'callTool')),
+    'mcp.client.uri' => p('operation', 'callTool') == 'readResource',
+    'android.calendar.from' || 'android.calendar.to' => p('operation', 'list') != 'create',
+    'android.calendar.minutes' ||
+    'android.calendar.dayStart' ||
+    'android.calendar.dayEnd' => p('operation', 'list') == 'freeSlots',
+    'android.calendar.title' ||
+    'android.calendar.start' ||
+    'android.calendar.end' ||
+    'android.calendar.allDay' ||
+    'android.calendar.location' ||
+    'android.calendar.description' => p('operation', 'list') == 'create',
+    'android.contacts.query' || 'android.contacts.limit' => p('operation', 'find') == 'find',
+    'android.contacts.name' || 'android.contacts.phone' || 'android.contacts.email' => p('operation', 'find') == 'add',
+    'android.clock.time' || 'android.clock.days' => p('operation', 'alarm') == 'alarm',
+    'android.clock.seconds' => p('operation', 'alarm') == 'timer',
+    'android.clock.label' => p('operation', 'alarm') != 'showAlarms',
+    'android.photo.multiple' => p('source', 'camera') == 'gallery',
+    'android.photo.pages' || 'android.photo.pdf' => p('source', 'camera') == 'scan',
     // The calendar picker under "mode" writes the cron; its text is in the picker's Advanced part.
     'trigger.schedule.cron' => false,
     'trigger.schedule.minutes' => p('mode', 'interval') != 'cron',
@@ -93,7 +124,7 @@ Widget? paramAssist(EditorController controller, WorkflowNode node, ParamSpec sp
     'google.calendar.start' || 'google.calendar.end' => _DateTimeAssist(a),
     'google.calendar.calendarId' => chips([('Main calendar', 'primary')]),
     'ai.chat.model' => _ModelAssist(a, provider: asString(node.params['provider'], 'anthropic')),
-    'ai.agent.model' => _ModelAssist(a, provider: 'anthropic'),
+    'ai.agent.model' => _ModelAssist(a, provider: asString(node.params['provider'], 'anthropic')),
     'google.sheets.spreadsheetId' => _IdAssist(a, IdKind.sheet, 'the sheet'),
     'google.drive.folderId' => _IdAssist(a, IdKind.driveFolder, 'the folder'),
     'google.drive.fileId' => _IdAssist(a, IdKind.driveFile, 'the file'),
@@ -116,6 +147,97 @@ Widget? paramAssist(EditorController controller, WorkflowNode node, ParamSpec sp
     'android.vibrate.ms' => chips([('Short', 200), ('Medium', 500), ('Long', 1200)]),
     'trigger.email.mailbox' => chips([('Inbox', 'INBOX')]),
     'trigger.telegram.chatId' || 'telegram.send.chatId' => _TelegramChatAssist(a),
+    'mcp.client.name' || 'mcp.client.uri' => _McpFindAssist(a),
+    'browser.run.steps' => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        chips([
+          ('Read the heading', 'extract heading h1'),
+          ('Search', 'type input[name=q] {{ \$json.text }}\npress Enter\nwait for #search\nextract all results h3'),
+          (
+            'Log in',
+            'click text="Sign in"\ntype #email you@example.com\ntype #password {{ \$json.password }}\npress Enter',
+          ),
+          ('Screenshot', 'screenshot page'),
+        ]),
+        const _Note(
+          'One step per line. Targets: a CSS selector (#id, .class), text="Button label", or a number from the AI page view.\n'
+          'click <target> · type <target> <text> · press Enter · wait 2 · wait for <target> · '
+          'extract [all] <name> <selector> [@href] · scroll [target] · back · open <url> · screenshot [name] · js <code>\n'
+          'Results are under browser.data; waits end as soon as the page is ready, nothing sleeps longer than it must.',
+        ),
+      ],
+    ),
+    'browser.run.visible' => const _Note(
+      'Shows the page while it runs so you can watch or step in (a captcha, a code). Needs FlowDroid on screen; '
+      'otherwise it runs hidden, which is also faster.',
+    ),
+    'browser.run.url' => const _Note(
+      'Log in to sites first in Settings → Browser logins; the steps then run logged in.',
+    ),
+    'android.ask.buttons' => chips([
+      ('Yes / No', 'Yes, No'),
+      ('Done / Snooze', 'Done, Snooze'),
+      ('Approve / Reject', 'Approve, Reject'),
+    ]),
+    'android.ask.timeout' => chips([('5 min', 5), ('1 hour', 60), ('1 day', 1440)]),
+    'android.ask.question' => const _Note(
+      'The step waits for your tap. Branch on {{ \$json.answer.button }}; it is empty if you swipe the question away, '
+      'and timedOut is true if nobody answers in time.',
+    ),
+    'android.listen.language' => chips([
+      ('Phone’s language', ''),
+      ('English (US)', 'en-US'),
+      ('English (UK)', 'en-GB'),
+      ('Filipino', 'fil-PH'),
+      ('Spanish', 'es-ES'),
+    ]),
+    'android.listen.prompt' => const _Note(
+      'With FlowDroid open, Android’s speech box appears. In the background it listens without one, '
+      'which needs microphone access; newer Android versions may block that while the app is closed.',
+    ),
+    'android.sound.mode' => const _Note(
+      'Silent and Do Not Disturb need “Do Not Disturb access” (Settings → Phone access). '
+      'The step adds the mode from before under sound, so a later step can set it back.',
+    ),
+    'android.calendar.calendar' => const _Note(
+      'Reads every calendar the phone syncs (Google, Outlook, Samsung…). Android asks for calendar access the first time.',
+    ),
+    'android.calendar.dayStart' || 'android.calendar.dayEnd' || 'android.clock.time' => chips([
+      ('07:00', '07:00'),
+      ('08:00', '08:00'),
+      ('09:00', '09:00'),
+      ('17:00', '17:00'),
+      ('18:00', '18:00'),
+    ]),
+    'android.clock.days' => chips([
+      ('Once', ''),
+      ('Weekdays', 'mon, tue, wed, thu, fri'),
+      ('Weekends', 'sat, sun'),
+      ('Every day', 'mon, tue, wed, thu, fri, sat, sun'),
+    ]),
+    'android.clock.seconds' => chips([('1 min', 60), ('5 min', 300), ('10 min', 600), ('25 min', 1500)]),
+    'android.contacts.query' => const _Note(
+      'Tip: after an SMS Trigger, search for {{ \$json.from }} to get the sender’s name.',
+    ),
+    'android.photo.source' => const _Note(
+      'Opens the camera, the photo picker or Google’s document scanner, so FlowDroid must be on screen: '
+      'run it from the app, a home-screen shortcut or the share sheet. Use the photo later as {{ \$json.file.path }}.',
+    ),
+    'trigger.calendar.minutes' => chips([
+      ('At the time', 0),
+      ('5 min', 5),
+      ('10 min', 10),
+      ('15 min', 15),
+      ('30 min', 30),
+    ]),
+    'trigger.calendar.event' => const _Note(
+      'Checked every minute while FlowDroid runs; all-day events are skipped. The item has the event’s title, start, end, '
+      'location and calendar.',
+    ),
+    'trigger.mcp.name' => const _Note(
+      'Settings → Webhook server shows the MCP address and how to add it to Claude Code.',
+    ),
     'android.speak.text' => _SpeakTestAssist(a),
     'rag.add.collection' || 'rag.search.collection' || 'rag.info.collection' => _CollectionAssist(a),
     'rag.add.embedder' => _Note(
@@ -524,13 +646,15 @@ class _ModelAssist extends StatelessWidget {
     final models = modelSuggestions[provider] ?? const <String>[];
     if (models.isEmpty) return const SizedBox.shrink();
     final value = assist.text.trim();
+    // No fixed default: the server's models, or Claude Code's own choice.
+    final hasDefault = provider != 'openaiCompatible' && provider != 'claudeCode';
     return _Pills(
       children: [
         for (final (i, m) in models.indexed)
           _Pill(
-            label: i == 0 && provider != 'openaiCompatible' ? '$m (default)' : m,
-            selected: value == m || (i == 0 && value.isEmpty && provider != 'openaiCompatible'),
-            onTap: () => assist.set(i == 0 && provider != 'openaiCompatible' ? '' : m),
+            label: i == 0 && hasDefault ? '$m (default)' : m,
+            selected: value == m || (i == 0 && value.isEmpty && hasDefault),
+            onTap: () => assist.set(i == 0 && hasDefault ? '' : m),
           ),
       ],
     );
@@ -669,6 +793,132 @@ class _TelegramChatAssistState extends State<_TelegramChatAssist> {
       if (_error != null) _Note(_error!, color: AppColors.of(context).warning),
     ],
   );
+}
+
+// ---------------------------------------------------------------- MCP tools, prompts, resources
+
+/// Asks the MCP server what it offers and fills in the name (and an
+/// arguments skeleton from the tool's schema) on a tap.
+class _McpFindAssist extends StatefulWidget {
+  const _McpFindAssist(this.assist);
+
+  final AssistContext assist;
+
+  @override
+  State<_McpFindAssist> createState() => _McpFindAssistState();
+}
+
+class _McpFindAssistState extends State<_McpFindAssist> {
+  List<JsonMap>? _found;
+  bool _busy = false;
+  String? _error;
+
+  JsonMap get _params => widget.assist.node.params;
+  String get _operation => asString(_params['operation'], 'callTool');
+
+  /// What to list for the field: resources for the URI, prompts or tools for the name.
+  (String method, String what) get _list => switch ((widget.assist.spec.key, _operation)) {
+    ('uri', _) => ('resources/list', 'resources'),
+    (_, 'getPrompt') => ('prompts/list', 'prompts'),
+    _ => ('tools/list', 'tools'),
+  };
+
+  /// The server as the node describes it; expressions can't be followed here.
+  JsonMap _server() {
+    String text(String key) {
+      final v = asString(_params[key]).trim();
+      if (v.contains('{{')) throw 'Uses an expression; type the server itself to look it up';
+      return v;
+    }
+
+    return switch (asString(_params['transport'], 'http')) {
+      'stdio' => {'transport': 'stdio', 'command': text('command')},
+      'saved' => {'transport': 'saved', 'credential': text('server')},
+      _ => {
+        'transport': 'http',
+        'url': text('url'),
+        if (text('credential').isNotEmpty) 'credential': text('credential'),
+      },
+    };
+  }
+
+  Future<void> _find() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final mcp = ServicesScope.of(context).mcp;
+    try {
+      final server = _server();
+      if ([server['url'], server['command'], server['credential']].every((v) => asString(v).isEmpty)) {
+        throw 'Fill in the server first';
+      }
+      final found = await mcp.listAll(server, _list.$1, const Duration(minutes: 2));
+      setState(() => _found = found);
+      if (found.isEmpty) _error = 'The server offers no ${_list.$2}.';
+    } on McpException catch (e) {
+      _error = e.message;
+    } on Object catch (e) {
+      _error = e is String ? e : 'Could not reach the server';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _pick(JsonMap entry) {
+    if (widget.assist.spec.key == 'uri') return widget.assist.set(asString(entry['uri']));
+    final name = asString(entry['name']);
+    final current = asString(_params['arguments']).trim();
+    // Only fill the arguments when there are none yet, so typed values are kept.
+    final empty = current.isEmpty || current == '{}';
+    widget.assist.setMany({
+      'name': name,
+      if (empty) 'arguments': const JsonEncoder.withIndent('  ').convert(_skeleton(entry)),
+    });
+  }
+
+  /// `{"query": "", "limit": 0}` from a tool's input schema, or a prompt's argument list.
+  static JsonMap _skeleton(JsonMap entry) {
+    final prompt = asMapList(entry['arguments']);
+    if (prompt.isNotEmpty) return {for (final a in prompt) asString(a['name']): ''};
+    return {
+      for (final MapEntry(:key, :value) in asMap(asMap(entry['inputSchema'])['properties']).entries)
+        key: switch (asMap(value)['type']) {
+          'number' || 'integer' => 0,
+          'boolean' => false,
+          'array' => <Object?>[],
+          'object' => <String, Object?>{},
+          _ => '',
+        },
+    };
+  }
+
+  String _label(JsonMap entry) => widget.assist.spec.key == 'uri'
+      ? asString(entry['name'], asString(entry['uri']))
+      : asString(entry['title'], asString(entry['name']));
+
+  bool _selected(JsonMap entry) =>
+      widget.assist.text == (widget.assist.spec.key == 'uri' ? asString(entry['uri']) : asString(entry['name']));
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = (_found ?? const <JsonMap>[]).where(_selected).firstOrNull;
+    final description = asString(picked?['description']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Pills(
+          children: [
+            _Pill(label: _busy ? 'Looking…' : 'Find ${_list.$2}', icon: AppIcons.search, onTap: _busy ? () {} : _find),
+            for (final entry in _found ?? const <JsonMap>[])
+              _Pill(label: _label(entry), selected: _selected(entry), onTap: () => _pick(entry)),
+          ],
+        ),
+        if (description.isNotEmpty) _Note(description),
+        if (_error != null) _Note(_error!, color: AppColors.of(context).warning),
+      ],
+    );
+  }
 }
 
 // ---------------------------------------------------------------- files

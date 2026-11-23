@@ -57,6 +57,18 @@ export const triggerNodes: NodeSpec[] = [
     ],
     run: passThrough,
   },
+  trigger('trigger.mcp', 'MCP Tool Trigger', 'Offers this workflow as a tool on FlowDroid’s MCP server (/mcp on the webhook port); it runs with the tool’s arguments when Claude Code or another MCP client calls it.', [
+    { key: 'name', label: 'Tool name', kind: 'text', default: 'my_tool', hint: 'letters, digits, _ or -' },
+    { key: 'description', label: 'What it does', kind: 'text', default: '', hint: 'the AI reads this to decide when to call it' },
+    { key: 'inputSchema', label: 'Arguments (JSON Schema)', kind: 'json', default: '{"type": "object", "properties": {"text": {"type": "string"}}}' },
+    { ...credentialParam(['webhookAuth']), label: 'Require a key', hint: 'empty = anyone on the network can call it' },
+  ]),
+  trigger('trigger.calendar', 'Calendar Event Trigger', 'Runs a few minutes before an event in the phone’s calendar starts, or after it ends (checked every minute while FlowDroid runs).', [
+    { key: 'event', label: 'When', kind: 'select', default: 'start', options: ['start', 'end'] },
+    { key: 'minutes', label: 'Minutes before it starts (or after it ends)', kind: 'number', default: 5 },
+    { key: 'calendar', label: 'Only in calendar', kind: 'text', default: '', hint: 'part of its name; empty = all' },
+    { key: 'contains', label: 'Only if the title contains', kind: 'text', default: '' },
+  ]),
   trigger('trigger.subworkflow', 'When Called by a Workflow', 'Runs when another workflow’s Execute Workflow node calls this one, with its items.'),
   trigger('trigger.error', 'Error Trigger', 'Runs when a workflow that names this one as its error workflow fails.'),
   trigger('trigger.sms', 'SMS Trigger', 'Runs for each SMS the phone receives (while FlowDroid runs).', [

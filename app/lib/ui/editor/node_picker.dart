@@ -56,10 +56,12 @@ class _NodePickerState extends State<NodePicker> {
               controller: scroll,
               children: [
                 for (final MapEntry(key: group, value: types) in groups.entries) ...[
-                  SectionLabel(NodeVisuals.groupLabel(group).toUpperCase()),
+                  _GroupHeader(group),
                   for (final t in types)
                     ListTile(
-                      leading: IconTile.forType(type: t.type, group: t.group, size: 36),
+                      leading: GlyphIcon.forType(type: t.type, group: t.group, size: 30),
+                      minLeadingWidth: 30,
+                      horizontalTitleGap: Space.lg,
                       title: Text(t.label, style: Theme.of(context).textTheme.titleSmall),
                       subtitle: Text(t.description, maxLines: 2, overflow: TextOverflow.ellipsis),
                       onTap: () => Navigator.pop(context, t),
@@ -73,6 +75,32 @@ class _NodePickerState extends State<NodePicker> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A group's name over its steps, after a dot in the group's color.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader(this.group);
+
+  final NodeGroup group;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.page, Space.xl, Space.page, Space.xs),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: c.groupColor(group), shape: BoxShape.circle),
+          ),
+          const SizedBox(width: Space.sm),
+          Text(NodeVisuals.groupLabel(group).toUpperCase(), style: Theme.of(context).textTheme.labelSmall),
         ],
       ),
     );

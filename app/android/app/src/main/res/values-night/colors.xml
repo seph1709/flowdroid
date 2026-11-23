@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- With the phone in dark mode: a dark icon with the blue mark, and a dark splash. -->
+    <color name="ic_launcher_background">#1C1C1F</color>
+    <color name="ic_launcher_mark">#4C8DFF</color>
+    <color name="splash_mark">#4C8DFF</color>
+</resources>

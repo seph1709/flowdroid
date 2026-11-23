@@ -539,6 +539,21 @@ const _optionLabels = {
   'collections': 'list knowledge bases',
   'sources': 'list sources',
   'file': 'file (saved in FlowDroid’s folder)',
+  'claudeCode': 'Claude Code (your Claude plan, in Ubuntu)',
+  'readFiles': 'Read files only',
+  'editFiles': 'Read and change files',
+  'runCommands': 'Change files and run commands',
+  'http': 'A server on the web (HTTP)',
+  'stdio': 'A command run in Ubuntu (stdio)',
+  'saved': 'A saved MCP server',
+  'freeSlots': 'find free time',
+  'dndOn': 'Do Not Disturb on (total silence)',
+  'dndPriority': 'Do Not Disturb: priority only',
+  'dndAlarms': 'Do Not Disturb: alarms only',
+  'dndOff': 'Do Not Disturb off',
+  'showAlarms': 'show my alarms',
+  'gallery': 'pick from the gallery',
+  'scan': 'scan a document',
 };
 
 /// `notContains` → `not contains`, `combineByIndex` → `combine by index`.

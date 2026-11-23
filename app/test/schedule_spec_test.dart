@@ -14,7 +14,15 @@ void main() {
   });
 
   test('cron comes back as the same choices', () {
-    for (final cron in ['*/5 * * * *', '45 * * * *', '0 */4 * * *', '30 9 * * *', '0 8 * * 1-5', '0 10 * * 0,6', '15 6 1,10-12 * *']) {
+    for (final cron in [
+      '*/5 * * * *',
+      '45 * * * *',
+      '0 */4 * * *',
+      '30 9 * * *',
+      '0 8 * * 1-5',
+      '0 10 * * 0,6',
+      '15 6 1,10-12 * *',
+    ]) {
       expect(ScheduleSpec.fromCron(cron)?.toCron(), cron, reason: cron);
     }
     expect(ScheduleSpec.fromCron('0 9 * * 7')?.weekdays, {0}, reason: '7 is Sunday too');

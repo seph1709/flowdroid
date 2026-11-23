@@ -86,32 +86,34 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(_RingPainter old) => old.state != state || old.c != c;
 }
 
-/// A node's icon: ink-colored glyph on a neutral tile with a hairline edge.
-class IconTile extends StatelessWidget {
-  const IconTile({super.key, required this.icon, this.color, this.size = 32});
+/// An icon on its own, with no tile behind it: a node's glyph in its group's
+/// color, or any glyph in [color]. Colors come from the theme, so the icon
+/// follows light and dark mode (and fades with it when the theme changes).
+class GlyphIcon extends StatelessWidget {
+  const GlyphIcon({super.key, required this.icon, this.color, this.size = 32}) : group = null;
 
-  IconTile.forType({super.key, required String type, required NodeGroup? group, this.size = 32})
+  GlyphIcon.forType({super.key, required String type, required this.group, this.size = 32})
     : icon = NodeVisuals.icon(type),
       color = null;
 
   final IconData icon;
 
-  /// Kept for callers that pass one; the tile is neutral.
+  /// The glyph's color; a node's group color when it has a group, else the text color.
   final Color? color;
+  final NodeGroup? group;
+
+  /// The square the glyph is laid out in; the glyph fills most of it.
   final double size;
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: c.grouped,
-        borderRadius: BorderRadius.circular(size * 0.3),
-        border: Border.all(color: c.hairline),
+    final group = this.group;
+    return SizedBox.square(
+      dimension: size,
+      child: Center(
+        child: Icon(icon, size: size * 0.72, color: color ?? (group == null ? c.text : c.groupColor(group))),
       ),
-      child: Icon(icon, size: size * 0.54, color: c.text),
     );
   }
 }

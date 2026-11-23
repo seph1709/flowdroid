@@ -52,7 +52,12 @@ void main() {
         return http.Response(
           jsonEncode({
             'voices': [
-              {'voice_id': 'v1', 'name': 'Aria', 'labels': {'accent': 'American', 'gender': 'female'}, 'preview_url': 'https://x/a.mp3'},
+              {
+                'voice_id': 'v1',
+                'name': 'Aria',
+                'labels': {'accent': 'American', 'gender': 'female'},
+                'preview_url': 'https://x/a.mp3',
+              },
             ],
           }),
           200,
@@ -72,7 +77,14 @@ void main() {
   });
 
   test('clear errors: wrong credential, API refusal', () async {
-    final (s, _) = await speech((_) => http.Response(jsonEncode({'error': {'message': 'Invalid API key'}}), 401));
+    final (s, _) = await speech(
+      (_) => http.Response(
+        jsonEncode({
+          'error': {'message': 'Invalid API key'},
+        }),
+        401,
+      ),
+    );
     expect(await s.call({'type': 'speak', 'text': 'x', 'provider': 'openai', 'credential': 'el'}), {
       'error': 'credential "el" is for elevenlabs, not openai',
     });

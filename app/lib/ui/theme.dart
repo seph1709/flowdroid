@@ -265,6 +265,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.danger,
     required this.dangerSoft,
     required this.shadow,
+    required this.groups,
   });
 
   static const light = AppColors(
@@ -287,6 +288,18 @@ class AppColors extends ThemeExtension<AppColors> {
     danger: Color(0xFFE5484D),
     dangerSoft: Color(0xFFFDECEC),
     shadow: Color(0x14000000),
+    groups: {
+      NodeGroup.trigger: Color(0xFFD9820A),
+      NodeGroup.flow: Color(0xFF7A5AF0),
+      NodeGroup.data: Color(0xFF0F9D8F),
+      NodeGroup.network: Color(0xFF2F7CF6),
+      NodeGroup.android: Color(0xFF2E9E52),
+      NodeGroup.ai: Color(0xFFD6409F),
+      NodeGroup.communication: Color(0xFF5B5BD6),
+      NodeGroup.database: Color(0xFF0E8AA8),
+      NodeGroup.productivity: Color(0xFFE0562B),
+      NodeGroup.system: Color(0xFF5F6168),
+    },
   );
 
   static const dark = AppColors(
@@ -309,6 +322,19 @@ class AppColors extends ThemeExtension<AppColors> {
     danger: Color(0xFFFF6369),
     dangerSoft: Color(0xFF3D1A1C),
     shadow: Color(0x66000000),
+    // Lighter tints of the same hues, so icons stay clear on dark surfaces.
+    groups: {
+      NodeGroup.trigger: Color(0xFFF2A93B),
+      NodeGroup.flow: Color(0xFFA48DFF),
+      NodeGroup.data: Color(0xFF3CC7B8),
+      NodeGroup.network: Color(0xFF6EA4FF),
+      NodeGroup.android: Color(0xFF55C878),
+      NodeGroup.ai: Color(0xFFF06BBF),
+      NodeGroup.communication: Color(0xFF9191F7),
+      NodeGroup.database: Color(0xFF45BEDB),
+      NodeGroup.productivity: Color(0xFFF2825C),
+      NodeGroup.system: Color(0xFFA1A1A8),
+    },
   );
 
   final Color background;
@@ -331,6 +357,12 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color dangerSoft;
   final Color shadow;
 
+  /// Each node group's color: its icons and its mark in lists.
+  final Map<NodeGroup, Color> groups;
+
+  /// The color of [group] in this theme.
+  Color groupColor(NodeGroup group) => groups[group] ?? textSecondary;
+
   static AppColors of(BuildContext context) => Theme.of(context).extension<AppColors>() ?? light;
 
   /// The soft shadow used by nodes and floating controls.
@@ -342,25 +374,38 @@ class AppColors extends ThemeExtension<AppColors> {
   @override
   AppColors copyWith() => this;
 
+  /// Blends every color, so switching light and dark mode fades instead of jumping.
   @override
-  AppColors lerp(AppColors? other, double t) => t < 0.5 || other == null ? this : other;
+  AppColors lerp(AppColors? other, double t) {
+    if (other == null) return this;
+    Color l(Color a, Color b) => Color.lerp(a, b, t)!;
+    return AppColors(
+      background: l(background, other.background),
+      canvas: l(canvas, other.canvas),
+      surface: l(surface, other.surface),
+      grouped: l(grouped, other.grouped),
+      hairline: l(hairline, other.hairline),
+      outline: l(outline, other.outline),
+      switchOff: l(switchOff, other.switchOff),
+      text: l(text, other.text),
+      textSecondary: l(textSecondary, other.textSecondary),
+      textTertiary: l(textTertiary, other.textTertiary),
+      accent: l(accent, other.accent),
+      accentSoft: l(accentSoft, other.accentSoft),
+      success: l(success, other.success),
+      successSoft: l(successSoft, other.successSoft),
+      warning: l(warning, other.warning),
+      warningSoft: l(warningSoft, other.warningSoft),
+      danger: l(danger, other.danger),
+      dangerSoft: l(dangerSoft, other.dangerSoft),
+      shadow: l(shadow, other.shadow),
+      groups: {for (final g in NodeGroup.values) g: l(groupColor(g), other.groupColor(g))},
+    );
+  }
 }
 
-/// Accent color, icon and label for each node group and type.
+/// Icon and label for each node group and type; group colors are in [AppColors.groupColor].
 abstract final class NodeVisuals {
-  static Color color(NodeGroup group) => switch (group) {
-    NodeGroup.trigger => const Color(0xFFE8920C),
-    NodeGroup.flow => const Color(0xFF7A5AF0),
-    NodeGroup.data => const Color(0xFF0F9D8F),
-    NodeGroup.network => const Color(0xFF2F7CF6),
-    NodeGroup.android => const Color(0xFF2E9E52),
-    NodeGroup.ai => const Color(0xFFD6409F),
-    NodeGroup.communication => const Color(0xFF5B5BD6),
-    NodeGroup.database => const Color(0xFF0E8AA8),
-    NodeGroup.productivity => const Color(0xFFE0562B),
-    NodeGroup.system => const Color(0xFF5F6168),
-  };
-
   static String groupLabel(NodeGroup group) => switch (group) {
     NodeGroup.trigger => 'Triggers',
     NodeGroup.flow => 'Flow',
@@ -428,6 +473,17 @@ abstract final class NodeVisuals {
     'core.executeWorkflow': AppIcons.workflow,
     'core.code': AppIcons.code,
     'ai.agent': AppIcons.agent,
+    'mcp.client': AppIcons.connect,
+    'trigger.mcp': AppIcons.server,
+    'trigger.calendar': AppIcons.calendarDot,
+    'android.calendar': AppIcons.calendar,
+    'android.ask': AppIcons.ask,
+    'android.listen': AppIcons.mic,
+    'android.sound': AppIcons.bellOff,
+    'android.contacts': AppIcons.person,
+    'android.clock': AppIcons.timer,
+    'android.photo': AppIcons.camera,
+    'browser.run': AppIcons.browser,
     'android.sms': AppIcons.message,
     'email.send': AppIcons.mailSend,
     'rss.read': AppIcons.rss,

@@ -1,6 +1,7 @@
 //! Node types and the registry the executor and editor use.
 
 mod android;
+mod browser;
 mod code;
 mod control;
 mod data;
@@ -8,6 +9,7 @@ mod file_refs;
 mod flow;
 mod http;
 pub mod integrations;
+mod phone;
 pub mod spec;
 mod triggers;
 
@@ -24,10 +26,13 @@ pub fn all_specs() -> impl Iterator<Item = &'static NodeSpec> {
         .chain(data::DATA_NODES)
         .chain(code::CODE_NODES)
         .chain(http::HTTP_NODES)
+        .chain(browser::BROWSER_NODES)
         .chain(android::ANDROID_NODES)
+        .chain(phone::PHONE_NODES)
         .chain(integrations::ai::AI_NODES)
         .chain(integrations::knowledge::KNOWLEDGE_NODES)
         .chain(integrations::agent::AGENT_NODES)
+        .chain(integrations::mcp::MCP_NODES)
         .chain(integrations::messaging::MESSAGING_NODES)
         .chain(integrations::email::EMAIL_NODES)
         .chain(integrations::databases::DATABASE_NODES)

@@ -100,6 +100,68 @@ pub static TRIGGER_NODES: &[NodeSpec] = &[
         step: None,
     },
     trigger(
+        "trigger.mcp",
+        "MCP Tool Trigger",
+        "Offers this workflow as a tool on FlowDroid’s MCP server (/mcp on the webhook port); it runs with the tool’s arguments when Claude Code or another MCP client calls it.",
+        &[
+            ParamSpec::new(
+                "name",
+                "Tool name",
+                ParamKind::Text,
+                Default::Text("my_tool"),
+            )
+            .hint("letters, digits, _ or -"),
+            ParamSpec::new(
+                "description",
+                "What it does",
+                ParamKind::Text,
+                Default::Text(""),
+            )
+            .hint("the AI reads this to decide when to call it"),
+            ParamSpec::new(
+                "inputSchema",
+                "Arguments (JSON Schema)",
+                ParamKind::Json,
+                Default::Text(
+                    "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}}",
+                ),
+            ),
+            ParamSpec {
+                label: "Require a key",
+                hint: Some("empty = anyone on the network can call it"),
+                ..credential_param(&["webhookAuth"])
+            },
+        ],
+    ),
+    trigger(
+        "trigger.calendar",
+        "Calendar Event Trigger",
+        "Runs a few minutes before an event in the phone’s calendar starts, or after it ends (checked every minute while FlowDroid runs).",
+        &[
+            ParamSpec::new("event", "When", ParamKind::Select, Default::Text("start"))
+                .options(&["start", "end"]),
+            ParamSpec::new(
+                "minutes",
+                "Minutes before it starts (or after it ends)",
+                ParamKind::Number,
+                Default::Number(5.0),
+            ),
+            ParamSpec::new(
+                "calendar",
+                "Only in calendar",
+                ParamKind::Text,
+                Default::Text(""),
+            )
+            .hint("part of its name; empty = all"),
+            ParamSpec::new(
+                "contains",
+                "Only if the title contains",
+                ParamKind::Text,
+                Default::Text(""),
+            ),
+        ],
+    ),
+    trigger(
         "trigger.subworkflow",
         "When Called by a Workflow",
         "Runs when another workflow’s Execute Workflow node calls this one, with its items.",

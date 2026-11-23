@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../core/execution_state.dart';
 import '../core/json.dart';
 import '../core/workflow.dart';
 import '../data/execution_record.dart';
@@ -14,11 +15,22 @@ import 'runner.dart';
 /// `POST http://<phone-ip>:<port>/webhook/<path>` runs every active workflow
 /// whose trigger has that path and method. The response comes from a
 /// "Respond to Webhook" node if one runs, otherwise it is the run's summary.
+///
+/// `http://<phone-ip>:<port>/mcp` is an MCP server (Streamable HTTP, JSON
+/// answers): every active workflow with an MCP Tool Trigger is a tool, and
+/// calling it runs the workflow with the tool's arguments as its item.
 class WebhookServer {
   WebhookServer({required this.repository, required this.runner, this.credentials, this.port = defaultPort});
 
   static const defaultPort = 5678;
   static const _prefix = '/webhook/';
+
+  /// Where FlowDroid's MCP server answers.
+  static const mcpPath = '/mcp';
+
+  /// MCP protocol versions the server speaks; it answers with the client's if listed.
+  static const _mcpVersions = {'2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'};
+  static final _toolName = RegExp(r'^[A-Za-z0-9_-]{1,64}$');
 
   final Repository repository;
   final WorkflowRunner runner;
@@ -53,7 +65,10 @@ class WebhookServer {
   }
 
   /// Whether [request] carries the key [trigger] asks for; also the header that held it.
-  Future<(bool, String?)> _authorized(WorkflowNode trigger, HttpRequest request) async {
+  Future<(bool, String?)> _authorized(WorkflowNode trigger, HttpRequest request) =>
+      _keyMatches(trigger, request.headers.value);
+
+  Future<(bool, String?)> _keyMatches(WorkflowNode trigger, String? Function(String name) headerValue) async {
     final name = asString(trigger.params['credential']);
     if (name.isEmpty) return (true, null);
     final credential = await credentials?.byName(name);
@@ -61,7 +76,7 @@ class WebhookServer {
     if (credential == null || credential.type != 'webhookAuth' || expected.isEmpty) return (false, null);
     final header = (credential.values['headerName'] ?? '').trim();
     final headerName = (header.isEmpty ? 'X-FlowDroid-Key' : header).toLowerCase();
-    final given = request.headers.value(headerName) ?? '';
+    final given = headerValue(headerName) ?? '';
     return (_sameText(given, expected), headerName);
   }
 
@@ -78,6 +93,7 @@ class WebhookServer {
 
   Future<void> _handle(HttpRequest request) async {
     final path = request.uri.path;
+    if (path == mcpPath) return _mcp(request);
     if (!path.startsWith(_prefix)) return _reply(request.response, 404, {'error': 'not found'});
     final hookPath = path.substring(_prefix.length);
     final matching = await _matching(hookPath, request.method);
@@ -133,6 +149,159 @@ class WebhookServer {
     ];
   }
 
+  // ---------------------------------------------------------------- MCP server
+
+  Future<void> _mcp(HttpRequest request) async {
+    final response = request.response;
+    // A web page must not reach the phone's workflows through the browser (DNS rebinding).
+    final origin = request.headers.value('origin');
+    if (origin != null && !_localOrigin(origin)) return _reply(response, 403, {'error': 'origin not allowed'});
+    if (request.method != 'POST') {
+      response.headers.set('Allow', 'POST');
+      return _reply(response, 405, {'error': 'FlowDroid’s MCP server answers POST requests'});
+    }
+    final Object? body;
+    try {
+      body = jsonDecode(await utf8.decodeStream(request));
+    } on FormatException {
+      return _reply(response, 400, _rpcError(null, -32700, 'Parse error'));
+    }
+    final tools = await mcpTools(request.headers.value);
+    final batch = body is List;
+    final answers = <JsonMap>[];
+    for (final message in batch ? asList(body) : [body]) {
+      final answer = await _answer(asMap(message), tools);
+      if (answer != null) answers.add(answer);
+    }
+    if (answers.isEmpty) {
+      response.statusCode = 202;
+      return response.close();
+    }
+    return _reply(response, 200, batch ? answers : answers.single);
+  }
+
+  static bool _localOrigin(String origin) {
+    final host = Uri.tryParse(origin)?.host ?? '';
+    return host == 'localhost' || host == '127.0.0.1' || host == '::1';
+  }
+
+  /// The tools a caller with these request headers may use: one per active
+  /// workflow with an MCP Tool Trigger whose key (if it asks for one) was sent.
+  Future<List<McpTool>> mcpTools(String? Function(String name) header) async {
+    final tools = <McpTool>[];
+    final names = <String>{};
+    for (final wf in (await repository.workflows()).where((w) => w.active)) {
+      for (final trigger in wf.nodesOfType('trigger.mcp')) {
+        final name = asString(trigger.params['name'], 'my_tool');
+        if (!_toolName.hasMatch(name) || names.contains(name)) continue;
+        if (!(await _keyMatches(trigger, header)).$1) continue;
+        names.add(name);
+        tools.add(
+          McpTool(wf, trigger, name, asString(trigger.params['description']), _schema(trigger.params['inputSchema'])),
+        );
+      }
+    }
+    return tools;
+  }
+
+  /// The trigger's JSON Schema for its arguments; an object schema, or one that accepts any object.
+  static JsonMap _schema(Object? value) {
+    Object? schema = value;
+    if (value is String) {
+      try {
+        schema = jsonDecode(value.trim().isEmpty ? '{}' : value);
+      } on FormatException {
+        schema = null;
+      }
+    }
+    final map = asMap(schema);
+    return map['type'] == 'object' ? map : {'type': 'object', 'properties': <String, Object?>{}};
+  }
+
+  Future<JsonMap?> _answer(JsonMap message, List<McpTool> tools) async {
+    final id = message['id'];
+    final method = message['method'];
+    // Notifications and the client's own answers need no reply.
+    if (method is! String || id == null) return null;
+    final params = asMap(message['params']);
+    JsonMap ok(JsonMap result) => {'jsonrpc': '2.0', 'id': id, 'result': result};
+    switch (method) {
+      case 'initialize':
+        final asked = asString(params['protocolVersion']);
+        return ok({
+          'protocolVersion': _mcpVersions.contains(asked) ? asked : '2025-06-18',
+          'capabilities': {
+            'tools': {'listChanged': false},
+          },
+          'serverInfo': {'name': 'FlowDroid', 'version': '1.0.0'},
+          'instructions': 'Each tool runs a FlowDroid workflow on the phone and returns what its last step produced.',
+        });
+      case 'ping':
+        return ok({});
+      case 'tools/list':
+        return ok({
+          'tools': [
+            for (final t in tools)
+              {
+                'name': t.name,
+                if (t.description.isNotEmpty) 'description': t.description,
+                'inputSchema': t.inputSchema,
+              },
+          ],
+        });
+      case 'tools/call':
+        final name = asString(params['name']);
+        final tool = tools.where((t) => t.name == name).firstOrNull;
+        if (tool == null) return _rpcError(id, -32602, 'Unknown tool: $name');
+        return ok(await _callTool(tool, asMap(params['arguments'])));
+      default:
+        return _rpcError(id, -32601, 'Method not found: $method');
+    }
+  }
+
+  /// Runs the tool's workflow; its answer is what a Respond to Webhook node sent, or the last step's items.
+  Future<JsonMap> _callTool(McpTool tool, JsonMap arguments) async {
+    Object? responded;
+    var hasResponse = false;
+    final record = await runner.run(
+      tool.workflow,
+      triggerNodeId: tool.trigger.id,
+      mode: TriggerMode.mcp,
+      items: [arguments],
+      respond: (status, contentType, body) async {
+        if (hasResponse) return;
+        hasResponse = true;
+        responded = body;
+      },
+    );
+    if (record.status == ExecutionStatus.error) {
+      return {
+        'content': [
+          {'type': 'text', 'text': '“${tool.workflow.name}” failed: ${record.error ?? 'unknown error'}'},
+        ],
+        'isError': true,
+      };
+    }
+    final Object? answer;
+    if (hasResponse) {
+      answer = responded;
+    } else {
+      final items = record.runs.lastOrNull?.outputs.expand((list) => list).toList() ?? const <JsonMap>[];
+      answer = items.length == 1 ? items.single : items;
+    }
+    return {
+      'content': [
+        {'type': 'text', 'text': answer is String ? answer : jsonEncode(answer)},
+      ],
+    };
+  }
+
+  static JsonMap _rpcError(Object? id, int code, String message) => {
+    'jsonrpc': '2.0',
+    'id': id,
+    'error': {'code': code, 'message': message},
+  };
+
   static Future<JsonMap> _itemFrom(HttpRequest request, String hookPath) async {
     final text = await utf8.decodeStream(request);
     Object? body = text;
@@ -161,8 +330,23 @@ class WebhookServer {
     String contentType = 'application/json',
   }) async {
     response.statusCode = status;
-    response.headers.contentType = ContentType.parse(contentType);
+    final type = ContentType.parse(contentType);
+    // Without a charset the response is written as Latin-1, which fails on other text.
+    response.headers.contentType = type.charset == null
+        ? ContentType(type.primaryType, type.subType, charset: 'utf-8', parameters: type.parameters)
+        : type;
     response.write(body is String && !contentType.contains('json') ? body : jsonEncode(body));
     await response.close();
   }
+}
+
+/// A workflow offered as a tool on FlowDroid's MCP server.
+class McpTool {
+  const McpTool(this.workflow, this.trigger, this.name, this.description, this.inputSchema);
+
+  final Workflow workflow;
+  final WorkflowNode trigger;
+  final String name;
+  final String description;
+  final JsonMap inputSchema;
 }

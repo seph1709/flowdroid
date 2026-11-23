@@ -188,7 +188,7 @@ class _NewWorkflowSheet extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: Space.page, vertical: Space.md),
         child: Row(
           children: [
-            IconTile(icon: icon, color: color, size: 36),
+            GlyphIcon(icon: icon, color: color, size: 32),
             const SizedBox(width: Space.md),
             Expanded(
               child: Column(
@@ -217,7 +217,7 @@ class _NewWorkflowSheet extends StatelessWidget {
             ),
             row(AppIcons.sparkle, c.accent, 'Describe it', 'The assistant builds it with you', const _Assistant()),
             row(AppIcons.add, c.accent, 'Blank', 'Starts with a manual trigger', const _Build(blankWorkflow)),
-            row(AppIcons.pasteIn, c.textSecondary, 'Import', 'Paste a workflow copied as JSON', const _Import()),
+            row(AppIcons.pasteIn, c.text, 'Import', 'Paste a workflow copied as JSON', const _Import()),
             const SectionLabel('TEMPLATES'),
             for (final t in templates)
               row(NodeVisuals.icon(t.icon), _templateColor(context, t.icon), t.title, t.description, _Build(t.build)),
@@ -231,7 +231,8 @@ class _NewWorkflowSheet extends StatelessWidget {
 
 Color _templateColor(BuildContext context, String type) {
   final group = ServicesScope.of(context).nodeType(type)?.group;
-  return group == null ? AppColors.of(context).accent : NodeVisuals.color(group);
+  final c = AppColors.of(context);
+  return group == null ? c.accent : c.groupColor(group);
 }
 
 class _EmptyState extends StatelessWidget {
@@ -247,7 +248,7 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          IconTile(icon: AppIcons.workflow, color: AppColors.of(context).accent, size: 56),
+          GlyphIcon(icon: AppIcons.workflow, color: AppColors.of(context).accent, size: 64),
           const SizedBox(height: Space.lg),
           Text('Automate your phone', style: theme.textTheme.titleLarge),
           const SizedBox(height: Space.sm),
@@ -329,7 +330,6 @@ class _WorkflowRow extends StatelessWidget {
     final services = ServicesScope.of(context);
     final theme = Theme.of(context);
     final trigger = workflow.nodes.where((n) => services.nodeType(n.type)?.isTrigger ?? false).firstOrNull;
-    final triggerType = trigger == null ? null : services.nodeType(trigger.type);
     return InkWell(
       onTap: onOpen,
       onLongPress: () => _menu(context),
@@ -337,7 +337,12 @@ class _WorkflowRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(Space.page, Space.md, Space.md, Space.md),
         child: Row(
           children: [
-            IconTile.forType(type: trigger?.type ?? '', group: triggerType?.group, size: 40),
+            // Every row's icon is a trigger, so color would say nothing; it dims when the workflow is off.
+            GlyphIcon(
+              icon: NodeVisuals.icon(trigger?.type ?? ''),
+              color: workflow.active ? AppColors.of(context).text : AppColors.of(context).textTertiary,
+              size: 36,
+            ),
             const SizedBox(width: Space.md),
             Expanded(
               child: Column(
@@ -410,6 +415,8 @@ class _BackgroundHint extends StatelessWidget {
   static const _automatic = {
     'trigger.schedule',
     'trigger.webhook',
+    'trigger.mcp',
+    'trigger.calendar',
     'trigger.telegram',
     'trigger.sms',
     'trigger.notification',

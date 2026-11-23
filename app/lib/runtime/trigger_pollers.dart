@@ -7,12 +7,25 @@ import '../data/execution_record.dart';
 import '../data/repository.dart';
 import 'email_service.dart';
 import 'feeds.dart';
+import 'phone/phone_productivity.dart';
 import 'runner.dart';
 
-/// Triggers that FlowDroid checks on a timer: Place (every minute), RSS and Email (every N minutes).
-/// [tick] runs once a minute from the scheduler's timer.
+/// Raw calendar events (epoch ms) between two times, from the phone.
+typedef CalendarReader = Future<List<JsonMap>> Function(DateTime from, DateTime to);
+
+/// Triggers that FlowDroid checks on a timer: Place and Calendar Event (every
+/// minute), RSS and Email (every N minutes). [tick] runs once a minute from the scheduler's timer.
 class TriggerPollers {
-  TriggerPollers({required this.repository, required this.runner, required this.feeds, required this.email});
+  TriggerPollers({
+    required this.repository,
+    required this.runner,
+    required this.feeds,
+    required this.email,
+    this.calendar,
+  });
+
+  /// How late a Calendar Event trigger may still fire (the phone may tick late while asleep).
+  static const calendarGrace = Duration(minutes: 10);
 
   /// Most posts remembered per feed, to tell new ones from old.
   static const _rememberPosts = 300;
@@ -21,6 +34,9 @@ class TriggerPollers {
   final WorkflowRunner runner;
   final FeedReader feeds;
   final EmailService email;
+
+  /// The phone's calendar; null where there is none (tests, other platforms).
+  final CalendarReader? calendar;
   bool _busy = false;
 
   Future<void> tick([DateTime? now]) async {
@@ -34,6 +50,11 @@ class TriggerPollers {
           for (final t in wf.nodesOfType('trigger.place')) (wf, t),
       ];
       if (places.isNotEmpty) await _checkPlaces(places);
+      final meetings = [
+        for (final wf in active)
+          for (final t in wf.nodesOfType('trigger.calendar')) (wf, t),
+      ];
+      if (meetings.isNotEmpty) await _guard('Calendar', () => _checkCalendar(meetings, at));
       for (final wf in active) {
         for (final t in wf.nodesOfType('trigger.rss')) {
           await _guard('RSS', () => _checkFeed(wf, t, at));
@@ -96,6 +117,59 @@ class TriggerPollers {
     for (final message in messages) {
       await runner.run(wf, triggerNodeId: trigger.id, mode: TriggerMode.email, items: [message]);
     }
+  }
+
+  /// One calendar read for all Calendar Event triggers; each event fires once per trigger.
+  Future<void> _checkCalendar(List<(Workflow, WorkflowNode)> triggers, DateTime now) async {
+    final read = calendar;
+    if (read == null) return;
+    final events = await read(now.subtract(const Duration(days: 1)), now.add(const Duration(days: 1)));
+    for (final (wf, trigger) in triggers) {
+      final key = 'calendar.${wf.id}.${trigger.id}';
+      final state = await repository.readState(key) ?? const {};
+      final fired = asList(state['fired']).map(asString).toList();
+      final due = dueCalendarEvents(events, trigger.params, now, fired.toSet());
+      if (due.isEmpty) continue;
+      await repository.writeState(key, {
+        'fired': [...due.map((d) => d.$1), ...fired].take(_rememberPosts).toList(),
+      });
+      for (final (_, event) in due) {
+        await runner.run(
+          wf,
+          triggerNodeId: trigger.id,
+          mode: TriggerMode.calendar,
+          items: [PhoneProductivity.eventItem(event)],
+        );
+      }
+    }
+  }
+
+  /// The events a Calendar Event trigger with [params] fires for at [now]: its
+  /// moment (start − minutes, or end + minutes) has come within the last
+  /// [calendarGrace], and it didn't fire yet. Each comes with its key for [fired].
+  static List<(String, JsonMap)> dueCalendarEvents(
+    List<JsonMap> events,
+    JsonMap params,
+    DateTime now,
+    Set<String> fired,
+  ) {
+    final atEnd = asString(params['event'], 'start') == 'end';
+    final minutes = asDouble(params['minutes'], 5);
+    final calendar = asString(params['calendar']).trim().toLowerCase();
+    final contains = asString(params['contains']).trim().toLowerCase();
+    final due = <(String, JsonMap)>[];
+    for (final e in events) {
+      // All-day events have no moment to come before or after.
+      if (e['allDay'] == true) continue;
+      if (calendar.isNotEmpty && !asString(e['calendar']).toLowerCase().contains(calendar)) continue;
+      if (contains.isNotEmpty && !asString(e['title']).toLowerCase().contains(contains)) continue;
+      final edge = DateTime.fromMillisecondsSinceEpoch(asInt(e[atEnd ? 'end' : 'start']));
+      final at = edge.add(Duration(seconds: ((atEnd ? minutes : -minutes) * 60).round()));
+      if (at.isAfter(now) || now.difference(at) > calendarGrace) continue;
+      final key = '${asString(e['id'])}@${asInt(e['start'])}';
+      if (!fired.contains(key)) due.add((key, e));
+    }
+    return due;
   }
 
   /// One position fix for all Place triggers; each fires when its inside/outside state flips.

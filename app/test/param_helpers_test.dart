@@ -4,10 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('IDs come out of pasted links', () {
     expect(
-      idFromLink(IdKind.sheet, 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-x/edit#gid=0'),
+      idFromLink(
+        IdKind.sheet,
+        'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-x/edit#gid=0',
+      ),
       '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-x',
     );
-    expect(idFromLink(IdKind.driveFolder, 'https://drive.google.com/drive/folders/0B1x2y3z4w5v6u?usp=sharing'), '0B1x2y3z4w5v6u');
+    expect(
+      idFromLink(IdKind.driveFolder, 'https://drive.google.com/drive/folders/0B1x2y3z4w5v6u?usp=sharing'),
+      '0B1x2y3z4w5v6u',
+    );
     expect(
       idFromLink(IdKind.driveFile, 'https://drive.google.com/file/d/1QwErTyUiOpAsDfGhJkLzXcV/view'),
       '1QwErTyUiOpAsDfGhJkLzXcV',
@@ -16,8 +22,14 @@ void main() {
       idFromLink(IdKind.notionDatabase, 'https://www.notion.so/team/Tasks-0123456789abcdef0123456789abcdef?v=ff'),
       '0123456789abcdef0123456789abcdef',
     );
-    expect(idFromLink(IdKind.airtableBase, 'https://airtable.com/appAbCdEfGhIjKlMn/tblZyXwVuTsRqPoNm/viw1'), 'appAbCdEfGhIjKlMn');
-    expect(idFromLink(IdKind.airtableTable, 'https://airtable.com/appAbCdEfGhIjKlMn/tblZyXwVuTsRqPoNm/viw1'), 'tblZyXwVuTsRqPoNm');
+    expect(
+      idFromLink(IdKind.airtableBase, 'https://airtable.com/appAbCdEfGhIjKlMn/tblZyXwVuTsRqPoNm/viw1'),
+      'appAbCdEfGhIjKlMn',
+    );
+    expect(
+      idFromLink(IdKind.airtableTable, 'https://airtable.com/appAbCdEfGhIjKlMn/tblZyXwVuTsRqPoNm/viw1'),
+      'tblZyXwVuTsRqPoNm',
+    );
     // Already an ID, an expression, or nothing to find: leave it alone.
     expect(idFromLink(IdKind.airtableBase, 'appAbCdEfGhIjKlMn'), isNull);
     expect(idFromLink(IdKind.sheet, r'{{ $json.sheet }}'), isNull);

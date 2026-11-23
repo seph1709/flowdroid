@@ -38,7 +38,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
@@ -49,16 +54,24 @@ import io.flutter.plugin.common.PluginRegistry;
 
 /**
  * FlowDroid's Android glue: sending SMS, phone-event receivers, the share sheet,
- * launcher shortcuts, notification access, and opening or saving documents.
+ * launcher shortcuts, notification access, opening or saving documents, and the
+ * phone productivity steps (calendar, contacts, Ask Me, speech, sound mode,
+ * alarms and timers, photos and document scans).
  */
 public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware,
-    PluginRegistry.NewIntentListener, PluginRegistry.ActivityResultListener {
+    PluginRegistry.NewIntentListener, PluginRegistry.ActivityResultListener,
+    PluginRegistry.RequestPermissionsResultListener {
 
     static final String ACTION_RUN_WORKFLOW = "dev.flowdroid.RUN_WORKFLOW";
     private static final int REQUEST_OPEN = 7101;
     private static final int REQUEST_SAVE = 7102;
     private static final int REQUEST_SMS = 7103;
     private static final int REQUEST_CONTACT = 7104;
+    private static final int REQUEST_PERMISSIONS = 7105;
+    private static final int REQUEST_SPEECH = 7106;
+    private static final int REQUEST_CAMERA = 7107;
+    private static final int REQUEST_GALLERY = 7108;
+    private static final int REQUEST_SCAN = 7109;
     private static final AtomicBoolean WATCHING = new AtomicBoolean(false);
 
     private Context context;
@@ -70,6 +83,10 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
     private MethodChannel.Result pendingContact;
     private String pendingContactKind;
     private byte[] bytesToSave;
+    private MethodChannel.Result pendingPermissions;
+    private MethodChannel.Result pendingSpeech;
+    private MethodChannel.Result pendingPhoto;
+    private File cameraFile;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutter) {
@@ -90,8 +107,143 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
                 Map<String, Object> status = new HashMap<>();
                 status.put("sms", granted(Manifest.permission.RECEIVE_SMS) && granted(Manifest.permission.SEND_SMS));
                 status.put("notificationAccess", notificationAccess());
+                status.put("calendar", granted(Manifest.permission.READ_CALENDAR) && granted(Manifest.permission.WRITE_CALENDAR));
+                status.put("contacts", granted(Manifest.permission.READ_CONTACTS) && granted(Manifest.permission.WRITE_CONTACTS));
+                status.put("microphone", granted(Manifest.permission.RECORD_AUDIO));
+                status.put("dnd", SoundActions.dndAccess(context));
                 result.success(status);
                 break;
+            case "ensurePermissions":
+                ensurePermissions(call.argument("names"), result);
+                break;
+            case "openDndAccess":
+                SoundActions.openDndAccess(context);
+                result.success(null);
+                break;
+            case "calendarEvents": {
+                Number from = call.argument("from");
+                Number to = call.argument("to");
+                String calendar = call.argument("calendar");
+                background(result, () -> CalendarActions.events(
+                    context, from == null ? 0 : from.longValue(), to == null ? 0 : to.longValue(), calendar));
+                break;
+            }
+            case "calendarCreate": {
+                Map<String, Object> event = call.argument("event");
+                background(result, () -> CalendarActions.create(context, event));
+                break;
+            }
+            case "contactsFind": {
+                String query = call.argument("query");
+                Number limit = call.argument("limit");
+                background(result, () -> ContactActions.find(context, query, limit == null ? 5 : limit.intValue()));
+                break;
+            }
+            case "contactsAdd": {
+                String name = call.argument("name");
+                String phone = call.argument("phone");
+                String email = call.argument("email");
+                background(result, () -> ContactActions.add(context, name, phone, email));
+                break;
+            }
+            case "ask": {
+                List<String> buttons = call.argument("buttons");
+                Boolean reply = call.argument("reply");
+                String problem = AskActions.ask(context, call.argument("id"), call.argument("title"), call.argument("question"),
+                    buttons == null ? new ArrayList<>() : buttons, Boolean.TRUE.equals(reply));
+                result.success(problem == null ? new HashMap<String, Object>() : error(problem));
+                break;
+            }
+            case "askCancel":
+                AskActions.cancel(context, call.argument("id"));
+                result.success(null);
+                break;
+            case "listen": {
+                Number maxMs = call.argument("maxMs");
+                listen(call.argument("language"), call.argument("prompt"), maxMs == null ? 30000 : maxMs.longValue(), result);
+                break;
+            }
+            case "soundMode":
+                result.success(SoundActions.set(context, call.argument("mode")));
+                break;
+            case "clock": {
+                String operation = call.argument("operation");
+                Number hour = call.argument("hour");
+                Number minute = call.argument("minute");
+                Number seconds = call.argument("seconds");
+                List<String> days = call.argument("days");
+                String label = call.argument("label");
+                if ("alarm".equals(operation)) {
+                    result.success(ClockActions.alarm(context, hour == null ? 0 : hour.intValue(),
+                        minute == null ? 0 : minute.intValue(), days, label));
+                } else if ("timer".equals(operation)) {
+                    result.success(ClockActions.timer(context, seconds == null ? 60 : seconds.intValue(), label));
+                } else {
+                    result.success(ClockActions.showAlarms(context));
+                }
+                break;
+            }
+            case "browserOpen": {
+                Number timeout = call.argument("timeoutMs");
+                Boolean fast = call.argument("fast");
+                Browser.open(context, call.argument("session"), call.argument("url"), Boolean.TRUE.equals(fast),
+                    timeout == null ? 30000 : timeout.longValue(), result::success);
+                break;
+            }
+            case "browserEval":
+                Browser.eval(call.argument("session"), call.argument("js"), result::success);
+                break;
+            case "browserBack":
+                result.success(Browser.back(call.argument("session")));
+                break;
+            case "browserScreenshot":
+                result.success(Browser.screenshot(call.argument("session"),
+                    new File(PhotoActions.filesDir(context), (String) call.argument("path"))));
+                break;
+            case "browserShow":
+                result.success(showBrowser(call.argument("session"), false));
+                break;
+            case "browserHide":
+                BrowserActivity.closeFor(call.argument("session"));
+                result.success(null);
+                break;
+            case "browserClose":
+                Browser.close(call.argument("session"));
+                result.success(null);
+                break;
+            case "browserLogin": {
+                String session = "login";
+                Browser.close(session);
+                Browser.session(context, session, false).web.loadUrl(call.argument("url"));
+                Map<String, Object> shown = showBrowser(session, true);
+                if (shown.containsKey("error")) {
+                    Browser.close(session);
+                    result.success(shown);
+                    break;
+                }
+                BrowserActivity.onDone(session, url -> {
+                    Browser.close(session);
+                    Map<String, Object> out = new HashMap<>();
+                    out.put("url", url);
+                    result.success(out);
+                });
+                break;
+            }
+            case "browserCookies":
+                result.success(Browser.cookies(call.argument("url")));
+                break;
+            case "browserClearLogins":
+                Browser.clearLogins();
+                result.success(null);
+                break;
+            case "photo": {
+                Boolean multiple = call.argument("multiple");
+                Number pages = call.argument("pages");
+                Boolean pdf = call.argument("pdf");
+                photo(call.argument("source"), Boolean.TRUE.equals(multiple), pages == null ? 5 : pages.intValue(),
+                    Boolean.TRUE.equals(pdf), result);
+                break;
+            }
             case "requestSms":
                 Activity activity = binding == null ? null : binding.getActivity();
                 if (activity != null) {
@@ -188,6 +340,203 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
             default:
                 result.notImplemented();
         }
+    }
+
+    /** Runs [work] off the main thread; its value, or `{error}` with what went wrong. */
+    private static void background(MethodChannel.Result result, Callable<Object> work) {
+        Handler main = new Handler(Looper.getMainLooper());
+        new Thread(() -> {
+            Object answer;
+            try {
+                answer = work.call();
+            } catch (SecurityException e) {
+                answer = error("FlowDroid may not do this yet: allow it in Settings → Phone access");
+            } catch (Exception e) {
+                answer = error(e.getMessage() == null ? e.toString() : e.getMessage());
+            }
+            Object reply = answer;
+            main.post(() -> result.success(reply));
+        }).start();
+    }
+
+    // ---------- Permissions ----------
+
+    private static String[] permissionsFor(String name) {
+        switch (name) {
+            case "calendar": return new String[] {Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR};
+            case "contacts": return new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS};
+            case "microphone": return new String[] {Manifest.permission.RECORD_AUDIO};
+            default: return new String[0];
+        }
+    }
+
+    /** True when FlowDroid has every permission [names] stand for, asking for the missing ones when it can. */
+    private void ensurePermissions(List<String> names, MethodChannel.Result result) {
+        List<String> missing = new ArrayList<>();
+        for (String name : names == null ? new ArrayList<String>() : names) {
+            for (String p : permissionsFor(name)) if (!granted(p)) missing.add(p);
+        }
+        if (missing.isEmpty()) {
+            result.success(true);
+            return;
+        }
+        Activity activity = binding == null ? null : binding.getActivity();
+        if (activity == null) {
+            // No screen to ask on (the background service): the step reports what to allow.
+            result.success(false);
+            return;
+        }
+        if (pendingPermissions != null) pendingPermissions.success(false);
+        pendingPermissions = result;
+        activity.requestPermissions(missing.toArray(new String[0]), REQUEST_PERMISSIONS);
+    }
+
+    @Override
+    public boolean onRequestPermissionsResult(int request, @NonNull String[] permissions, @NonNull int[] results) {
+        if (request != REQUEST_PERMISSIONS) return false;
+        MethodChannel.Result result = pendingPermissions;
+        pendingPermissions = null;
+        boolean all = results.length > 0;
+        for (int r : results) all &= r == PackageManager.PERMISSION_GRANTED;
+        if (result != null) result.success(all);
+        return true;
+    }
+
+    // ---------- Speech ----------
+
+    /** Android's speech dialog while FlowDroid is on screen; otherwise the recognizer listens without one. */
+    private void listen(String language, String prompt, long maxMs, MethodChannel.Result result) {
+        Activity activity = binding == null ? null : binding.getActivity();
+        if (activity != null && DeviceActions.onScreen()) {
+            try {
+                if (pendingSpeech != null) pendingSpeech.success(error("listening again"));
+                pendingSpeech = result;
+                activity.startActivityForResult(SpeechActions.recognizeIntent(language, prompt), REQUEST_SPEECH);
+                return;
+            } catch (RuntimeException e) {
+                pendingSpeech = null;
+                // No speech dialog on this phone: listen without one.
+            }
+        }
+        SpeechActions.listen(context, language, maxMs, result::success);
+    }
+
+    // ---------- Photos and scans ----------
+
+    private void photo(String source, boolean multiple, int pages, boolean pdf, MethodChannel.Result result) {
+        Activity activity = binding == null ? null : binding.getActivity();
+        if (activity == null || !DeviceActions.onScreen()) {
+            result.success(error("photos and scans need FlowDroid on screen: run this step from the app, a home-screen shortcut or the share sheet"));
+            return;
+        }
+        if (pendingPhoto != null) pendingPhoto.success(cancelled());
+        pendingPhoto = result;
+        try {
+            switch (String.valueOf(source)) {
+                case "gallery":
+                    activity.startActivityForResult(PhotoActions.galleryIntent(multiple), REQUEST_GALLERY);
+                    break;
+                case "scan": {
+                    GmsDocumentScannerOptions.Builder options = new GmsDocumentScannerOptions.Builder()
+                        .setGalleryImportAllowed(true)
+                        .setPageLimit(Math.max(1, Math.min(20, pages)))
+                        .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL);
+                    if (pdf) {
+                        options.setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG, GmsDocumentScannerOptions.RESULT_FORMAT_PDF);
+                    } else {
+                        options.setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG);
+                    }
+                    GmsDocumentScanning.getClient(options.build()).getStartScanIntent(activity)
+                        .addOnSuccessListener(sender -> {
+                            try {
+                                activity.startIntentSenderForResult(sender, REQUEST_SCAN, null, 0, 0, 0);
+                            } catch (Exception e) {
+                                finishPhoto(error("could not start the document scanner: " + e.getMessage()));
+                            }
+                        })
+                        .addOnFailureListener(e -> finishPhoto(error(
+                            "the document scanner needs Google Play services: " + e.getMessage())));
+                    break;
+                }
+                default:
+                    cameraFile = PhotoActions.cameraTarget(context);
+                    activity.startActivityForResult(PhotoActions.cameraIntent(context, cameraFile), REQUEST_CAMERA);
+            }
+        } catch (android.content.ActivityNotFoundException e) {
+            finishPhoto(error("no app on this phone can do this"));
+        } catch (Exception e) {
+            finishPhoto(error("could not start: " + e.getMessage()));
+        }
+    }
+
+    private void finishPhoto(Object answer) {
+        MethodChannel.Result result = pendingPhoto;
+        pendingPhoto = null;
+        if (result != null) result.success(answer);
+    }
+
+    private static Map<String, Object> cancelled() {
+        Map<String, Object> out = new HashMap<>();
+        out.put("files", new ArrayList<String>());
+        out.put("cancelled", true);
+        return out;
+    }
+
+    /** Copies what the camera, picker or scanner returned into FlowDroid's folder, off the main thread. */
+    private void photoResult(int request, int code, Intent data) {
+        if (code != Activity.RESULT_OK) {
+            finishPhoto(cancelled());
+            return;
+        }
+        File camera = cameraFile;
+        cameraFile = null;
+        Handler main = new Handler(Looper.getMainLooper());
+        new Thread(() -> {
+            Map<String, Object> out = new HashMap<>();
+            List<String> files = new ArrayList<>();
+            try {
+                if (request == REQUEST_CAMERA) {
+                    files.add(PhotoActions.keepCameraPhoto(context, camera));
+                } else if (request == REQUEST_GALLERY) {
+                    if (data != null && data.getClipData() != null) {
+                        for (int i = 0; i < data.getClipData().getItemCount(); i++) {
+                            files.add(PhotoActions.copyIn(context, data.getClipData().getItemAt(i).getUri(), "photos", "photo.jpg"));
+                        }
+                    } else if (data != null && data.getData() != null) {
+                        files.add(PhotoActions.copyIn(context, data.getData(), "photos", "photo.jpg"));
+                    }
+                } else {
+                    GmsDocumentScanningResult scan = GmsDocumentScanningResult.fromActivityResultIntent(data);
+                    if (scan != null && scan.getPages() != null) {
+                        int n = 1;
+                        for (GmsDocumentScanningResult.Page page : scan.getPages()) {
+                            files.add(PhotoActions.copyIn(context, page.getImageUri(), "scans", "page-" + n++ + ".jpg"));
+                        }
+                    }
+                    if (scan != null && scan.getPdf() != null) {
+                        out.put("pdf", PhotoActions.copyIn(context, scan.getPdf().getUri(), "scans", "scan.pdf"));
+                    }
+                }
+                out.put("files", files);
+            } catch (Exception e) {
+                out.clear();
+                out.put("error", "could not keep the photo: " + e.getMessage());
+            }
+            main.post(() -> finishPhoto(out));
+        }).start();
+    }
+
+    /** Puts a browser session on screen; needs FlowDroid on screen to start from. */
+    private Map<String, Object> showBrowser(String session, boolean login) {
+        if (Browser.get(session) == null) return Browser.error("no page is open");
+        if (!DeviceActions.onScreen() && !Settings.canDrawOverlays(context)) {
+            return Browser.error("showing the browser needs FlowDroid on screen");
+        }
+        context.startActivity(new Intent(context, BrowserActivity.class)
+            .putExtra(BrowserActivity.EXTRA_SESSION, session)
+            .putExtra(BrowserActivity.EXTRA_LOGIN, login)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        return new HashMap<>();
     }
 
     private boolean granted(String permission) {
@@ -416,6 +765,25 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
 
     @Override
     public boolean onActivityResult(int request, int code, Intent data) {
+        if (request == REQUEST_SPEECH) {
+            MethodChannel.Result result = pendingSpeech;
+            pendingSpeech = null;
+            if (result == null) return true;
+            if (code != Activity.RESULT_OK || data == null) {
+                Map<String, Object> none = SpeechActions.resultOf(null, null);
+                none.put("cancelled", true);
+                result.success(none);
+            } else {
+                result.success(SpeechActions.resultOf(
+                    data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS),
+                    data.getFloatArrayExtra(android.speech.RecognizerIntent.EXTRA_CONFIDENCE_SCORES)));
+            }
+            return true;
+        }
+        if (request == REQUEST_CAMERA || request == REQUEST_GALLERY || request == REQUEST_SCAN) {
+            photoResult(request, code, data);
+            return true;
+        }
         if (request == REQUEST_CONTACT) {
             MethodChannel.Result result = pendingContact;
             pendingContact = null;
@@ -473,6 +841,7 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
         binding = activityBinding;
         binding.addOnNewIntentListener(this);
         binding.addActivityResultListener(this);
+        binding.addRequestPermissionsResultListener(this);
         takeIntent(binding.getActivity().getIntent());
     }
 
@@ -491,6 +860,7 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
         if (binding != null) {
             binding.removeOnNewIntentListener(this);
             binding.removeActivityResultListener(this);
+            binding.removeRequestPermissionsResultListener(this);
         }
         binding = null;
     }

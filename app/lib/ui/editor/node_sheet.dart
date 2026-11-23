@@ -130,7 +130,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final type = controller.typeOf(node);
-    final accent = type == null ? theme.colorScheme.error : NodeVisuals.color(type.group);
+    final accent = type == null ? theme.colorScheme.error : AppColors.of(context).groupColor(type.group);
     return Padding(
       padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.lg, Space.md),
       child: Column(
@@ -138,7 +138,7 @@ class _Header extends StatelessWidget {
         children: [
           Row(
             children: [
-              IconTile(icon: NodeVisuals.icon(node.type), color: accent, size: 44),
+              GlyphIcon(icon: NodeVisuals.icon(node.type), color: accent, size: 40),
               const SizedBox(width: Space.lg),
               Expanded(
                 child: Column(

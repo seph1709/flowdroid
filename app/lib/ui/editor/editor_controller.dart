@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
@@ -394,6 +395,28 @@ class EditorController extends ChangeNotifier {
     }
   }
 
+  /// Arguments shaped like the MCP Tool Trigger's schema: `"test"` for text, 1 for numbers, and so on.
+  static JsonMap sampleArguments(Object? schema) {
+    Object? parsed = schema;
+    if (schema is String) {
+      try {
+        parsed = jsonDecode(schema);
+      } on FormatException {
+        parsed = null;
+      }
+    }
+    return {
+      for (final MapEntry(:key, :value) in asMap(asMap(parsed)['properties']).entries)
+        key: switch (asMap(value)['type']) {
+          'number' || 'integer' => 1,
+          'boolean' => true,
+          'array' => <Object?>[],
+          'object' => <String, Object?>{},
+          _ => 'test',
+        },
+    };
+  }
+
   /// A manual run of a webhook or schedule trigger gets an item shaped like the real one.
   JsonMap _sampleTriggerItem(WorkflowNode trigger) => switch (trigger.type) {
     'trigger.webhook' => {
@@ -404,6 +427,7 @@ class EditorController extends ChangeNotifier {
       'body': {'test': true},
     },
     'trigger.schedule' => {'timestamp': DateTime.now().toUtc().toIso8601String()},
+    'trigger.mcp' => sampleArguments(trigger.params['inputSchema']),
     _ => {},
   };
 

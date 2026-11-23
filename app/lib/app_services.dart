@@ -11,6 +11,9 @@ import 'data/credentials.dart';
 import 'data/repository.dart';
 import 'runtime/agent_tools.dart';
 import 'runtime/background_health.dart';
+import 'runtime/browser/browser_driver.dart';
+import 'runtime/browser/phone_browser.dart';
+import 'runtime/cli_chat.dart';
 import 'runtime/code_runner.dart';
 import 'runtime/credential_resolver.dart';
 import 'runtime/device_effects.dart';
@@ -22,7 +25,9 @@ import 'runtime/file_effect.dart';
 import 'runtime/http_effect.dart';
 import 'runtime/knowledge_base.dart';
 import 'runtime/linux/linux_runtime.dart';
+import 'runtime/mcp_client.dart';
 import 'runtime/phone/phone_events.dart';
+import 'runtime/phone/phone_productivity.dart';
 import 'runtime/runner.dart';
 import 'runtime/scheduler.dart';
 import 'runtime/speech.dart';
@@ -45,7 +50,10 @@ class AppServices {
     FeedReader? feeds,
     EmailService? email,
     Speech? speech,
+    McpClient? mcp,
+    CalendarReader? calendar,
   }) : catalog = core.nodeCatalog(),
+       mcp = mcp ?? McpClient(linux: linux, credentials: CredentialResolver(credentials)),
        phone = phone ?? PhoneBridge(),
        runner = WorkflowRunner(core: core, effects: effects, repository: repository) {
     this.speech = speech ?? Speech(credentials: credentials, phone: this.phone, dataDir: dataDir);
@@ -65,6 +73,7 @@ class AppServices {
       runner: runner,
       feeds: feeds ?? FeedReader(),
       email: email ?? EmailService(credentials),
+      calendar: calendar,
     );
   }
 
@@ -78,6 +87,14 @@ class AppServices {
     final email = EmailService(credentials, files: FileStore(dataDir));
     final speech = Speech(credentials: credentials, phone: phone, dataDir: dataDir);
     final knowledge = KnowledgeBase(dataDir: dataDir, credentials: credentials);
+    final resolver = CredentialResolver(credentials, cookies: phone.browserCookies);
+    final files = FileStore(dataDir);
+    final browser = BrowserDriver(
+      PhoneBrowser(phone),
+      saveScreenshot: (path) => files.refOf(File('${files.root.path}/$path')),
+    );
+    final mcp = McpClient(linux: linux, credentials: resolver);
+    final productivity = PhoneProductivity(phone: phone, dataDir: dataDir, interactive: interactive);
     late final AppServices services;
     Future<List<JsonMap>> callWorkflow(String id, List<JsonMap> items) => services.runner.runSubWorkflow(id, items);
 
@@ -91,18 +108,35 @@ class AppServices {
       feeds: feeds,
       email: email,
       speech: speech,
+      mcp: mcp,
+      calendar: productivity.eventsBetween,
       effects:
           effects ??
           DeviceEffects(
             interactive: interactive,
             phone: phone,
-            http: HttpEffect(credentials: CredentialResolver(credentials), files: FileStore(dataDir)),
+            http: HttpEffect(credentials: resolver, files: FileStore(dataDir)),
             tables: tables,
             linux: linux,
             extra: {
               'code': CodeRunner(linux).call,
+              'cliChat': CliChat(
+                linux: linux,
+                files: FileStore(dataDir),
+                sessions: File('${dataDir.path}/claude_sessions.json'),
+                credentials: resolver,
+              ).call,
+              'mcp': mcp.call,
+              'mcpList': mcp.listTools,
               'workflow': (effect) => callWorkflows(effect, callWorkflow),
-              'tools': AgentTools(linux: linux, tables: tables, callWorkflow: callWorkflow).call,
+              'tools': AgentTools(
+                linux: linux,
+                tables: tables,
+                callWorkflow: callWorkflow,
+                mcp: mcp,
+                browser: browser,
+              ).call,
+              'browser': browser.call,
               'sms': (effect) => sendSms(effect, phone),
               'speak': speech.call,
               'knowledge': knowledge.call,
@@ -110,6 +144,7 @@ class AppServices {
               'email': email.call,
               'rss': feeds.call,
               'file': FileEffect(Directory('${dataDir.path}/files')).call,
+              ...productivity.handlers,
             },
           ),
     );
@@ -122,6 +157,9 @@ class AppServices {
   final LinuxRuntime linux;
   final Directory dataDir;
   final PhoneBridge phone;
+
+  /// MCP sessions, shared by runs and the editor's "Find tools".
+  final McpClient mcp;
   final List<NodeType> catalog;
   final WorkflowRunner runner;
   late final Scheduler scheduler;

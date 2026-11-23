@@ -119,7 +119,10 @@ void main() {
       id: 'wf',
       name: 'Empty',
       nodes: [n('start', 'trigger.manual'), n('Fetch', 'http.request'), n('Use', 'core.noop')],
-      connections: [const Connection(from: 'start', to: 'Fetch'), const Connection(from: 'Fetch', to: 'Use')],
+      connections: [
+        const Connection(from: 'start', to: 'Fetch'),
+        const Connection(from: 'Fetch', to: 'Use'),
+      ],
     );
     expect(
       () => soloRun(wf, 'Use', portOutput: (_, _) => null, allOutput: (_) => null),
@@ -129,7 +132,11 @@ void main() {
     final plan = soloRun(
       wf,
       'Use',
-      portOutput: (id, _) => id == 'Fetch' ? [{'pinned': true}] : null,
+      portOutput: (id, _) => id == 'Fetch'
+          ? [
+              {'pinned': true},
+            ]
+          : null,
       allOutput: (_) => null,
     );
     expect(plan.workflow.node('Use'), isNotNull);

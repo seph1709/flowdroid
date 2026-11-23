@@ -7,6 +7,7 @@ import '../home/webhook_info_sheet.dart';
 import '../kit/kit.dart';
 import 'background_setup_page.dart';
 import 'backup_section.dart';
+import 'browser_logins_sheet.dart';
 import 'knowledge_page.dart';
 import 'phone_access_section.dart';
 import '../theme.dart';
@@ -184,6 +185,13 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                   trailing: Icon(AppIcons.chevronRight, color: c.textTertiary),
                   onTap: () =>
                       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TerminalPage())),
+                ),
+                ListTile(
+                  leading: Icon(AppIcons.browser, color: c.textSecondary),
+                  title: const Text('Browser logins'),
+                  subtitle: const Text('Sites the Browser step and the AI can use while logged in'),
+                  trailing: Icon(AppIcons.chevronRight, color: c.textTertiary),
+                  onTap: () => BrowserLoginsSheet.show(context),
                 ),
                 ListTile(
                   leading: Icon(AppIcons.webhook, color: c.textSecondary),

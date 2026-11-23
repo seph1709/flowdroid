@@ -28,7 +28,10 @@ void main() {
     final b = await store.save([4], 'report.pdf');
     expect(a, {'path': 'downloads/report.pdf', 'name': 'report.pdf', 'mimeType': 'application/pdf', 'size': 3});
     expect(b['path'], 'downloads/report (2).pdf');
-    expect(downloadName(Uri.parse('https://x.io/get?id=1'), {'content-disposition': 'attachment; filename="Q3 plan.docx"'}), 'Q3 plan.docx');
+    expect(
+      downloadName(Uri.parse('https://x.io/get?id=1'), {'content-disposition': 'attachment; filename="Q3 plan.docx"'}),
+      'Q3 plan.docx',
+    );
     expect(downloadName(Uri.parse('https://x.io/img/cat.png'), {}), 'cat.png');
     expect(downloadName(Uri.parse('https://x.io/'), {'content-type': 'image/jpeg'}), 'download.jpg');
   });
@@ -49,26 +52,49 @@ void main() {
     final effect = HttpEffect(client: client, files: store);
     final r = await effect.call({
       'requests': [
-        {'method': 'PUT', 'url': 'https://x.io/a', 'headers': <String, String>{}, 'file': 'shared/cat.png', 'saveAs': 'file'},
         {
-          'method': 'POST', 'url': 'https://x.io/b', 'headers': <String, String>{},
+          'method': 'PUT',
+          'url': 'https://x.io/a',
+          'headers': <String, String>{},
+          'file': 'shared/cat.png',
+          'saveAs': 'file',
+        },
+        {
+          'method': 'POST',
+          'url': 'https://x.io/b',
+          'headers': <String, String>{},
           'multipart': [
             {'name': 'chat_id', 'value': '42'},
             {'name': 'photo', 'file': 'shared/cat.png'},
           ],
         },
         {
-          'method': 'POST', 'url': 'https://x.io/c', 'headers': <String, String>{},
-          'related': {'metadata': {'name': 'cat.png'}, 'file': 'shared/cat.png', 'mimeType': 'image/png'},
+          'method': 'POST',
+          'url': 'https://x.io/c',
+          'headers': <String, String>{},
+          'related': {
+            'metadata': {'name': 'cat.png'},
+            'file': 'shared/cat.png',
+            'mimeType': 'image/png',
+          },
         },
-        {'method': 'POST', 'url': 'https://x.io/d', 'headers': <String, String>{}, 'inlineFiles': true, 'body': '{"data":"@@flowdroid-file-base64:shared/cat.png@@"}'},
+        {
+          'method': 'POST',
+          'url': 'https://x.io/d',
+          'headers': <String, String>{},
+          'inlineFiles': true,
+          'body': '{"data":"@@flowdroid-file-base64:shared/cat.png@@"}',
+        },
       ],
     });
     final responses = (r['responses']! as List).cast<Map<String, Object?>>();
     expect(bodies[0], [137, 80, 78, 71]);
     expect(jsonDecode(responses[0]['body']! as String), containsPair('path', 'downloads/out.png'));
     expect(seen[1].headers['content-type'], startsWith('multipart/form-data'));
-    expect(utf8.decode(bodies[1], allowMalformed: true), allOf(contains('name="chat_id"'), contains('filename="cat.png"')));
+    expect(
+      utf8.decode(bodies[1], allowMalformed: true),
+      allOf(contains('name="chat_id"'), contains('filename="cat.png"')),
+    );
     expect(seen[2].headers['Content-Type'], 'multipart/related; boundary=flowdroid-related-part');
     expect(utf8.decode(bodies[2], allowMalformed: true), contains('{"name":"cat.png"}'));
     expect(utf8.decode(bodies[3]), '{"data":"${base64.encode([137, 80, 78, 71])}"}');
@@ -88,7 +114,12 @@ void main() {
       '<html><style>b{}</style><body><h1>Title</h1><p>One &amp; two</p><script>x()</script></body></html>',
     );
     final doc = Archive()
-      ..addFile(ArchiveFile.string('word/document.xml', '<w:document><w:body><w:p><w:r><w:t>First</w:t></w:r></w:p><w:p><w:r><w:t>Second &amp; last</w:t></w:r></w:p></w:body></w:document>'));
+      ..addFile(
+        ArchiveFile.string(
+          'word/document.xml',
+          '<w:document><w:body><w:p><w:r><w:t>First</w:t></w:r></w:p><w:p><w:r><w:t>Second &amp; last</w:t></w:r></w:p></w:body></w:document>',
+        ),
+      );
     await File('${store.root.path}/shared/d.docx').writeAsBytes(ZipEncoder().encode(doc));
     await File('${store.root.path}/shared/photo.jpg').writeAsBytes([1]);
     final r = await x.call({
@@ -100,7 +131,9 @@ void main() {
     expect(results[2], {'text': 'First\nSecond & last'});
     expect(results[3]['error'], 'photo.jpg is an image: there is no text in it to extract');
     expect(results[4]['error'], 'file not found: shared/none.txt');
-    final pdf = await x.call({'files': ['shared/d.docx'.replaceAll('docx', 'pdf')]});
+    final pdf = await x.call({
+      'files': ['shared/d.docx'.replaceAll('docx', 'pdf')],
+    });
     expect(((pdf['results']! as List).single as Map)['error'], contains('not found'));
   });
 
