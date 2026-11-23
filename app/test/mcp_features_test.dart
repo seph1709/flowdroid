@@ -201,7 +201,6 @@ void main() {
 
   group('FlowDroid’s MCP server', () {
     late int port;
-    var nextPort = 56790;
 
     Future<(int, Object?)> post(Object body, {Map<String, String> headers = const {}}) async {
       final request = await HttpClient().post('127.0.0.1', port, '/mcp');
@@ -254,7 +253,6 @@ void main() {
       final overrides = HttpOverrides.current;
       HttpOverrides.global = null;
       addTearDown(() => HttpOverrides.global = overrides);
-      port = nextPort++;
       final store = CredentialStore();
       await store.save(const Credential(name: 'Key', type: 'webhookAuth', values: {'value': 'k-123456'}));
       final repository = await tempRepository();
@@ -263,8 +261,9 @@ void main() {
       await repository.saveWorkflow(toolWorkflow('c', 'add_note'));
       await repository.saveWorkflow(toolWorkflow('d', 'off')..active = false);
       final runner = WorkflowRunner(core: core, effects: FakeEffects(), repository: repository);
-      final server = WebhookServer(repository: repository, runner: runner, credentials: store, port: port);
+      final server = WebhookServer(repository: repository, runner: runner, credentials: store, port: 0);
       await server.start();
+      port = server.boundPort;
       addTearDown(server.stop);
     });
 

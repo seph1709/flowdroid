@@ -385,7 +385,7 @@ void main() {
     final store = CredentialStore();
     await store.save(const Credential(name: 'Hook', type: 'webhookAuth', values: {'value': 's3cret-key'}));
     final runner = WorkflowRunner(core: core, effects: FakeEffects(), repository: repository);
-    final server = WebhookServer(repository: repository, runner: runner, credentials: store, port: 56793);
+    final server = WebhookServer(repository: repository, runner: runner, credentials: store, port: 0);
     await repository.saveWorkflow(
       Workflow(
         id: 'wf_hook',
@@ -400,7 +400,7 @@ void main() {
     addTearDown(server.stop);
     // The test binding fakes HttpClient (every call answers 400); talk to the real server instead.
     Future<int> send(String? key) async {
-      final request = await HttpClient().post('127.0.0.1', 56793, '/webhook/secure');
+      final request = await HttpClient().post('127.0.0.1', server.boundPort, '/webhook/secure');
       if (key != null) request.headers.set('X-FlowDroid-Key', key);
       request.headers.contentType = ContentType.json;
       request.write('{}');
