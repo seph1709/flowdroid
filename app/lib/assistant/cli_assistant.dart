@@ -56,8 +56,12 @@ class McpToolServer {
   Emit? emit;
 
   Future<String> start() async {
-    final server = _server ??= await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    server.listen(_handle, onError: (Object _) {});
+    var server = _server;
+    if (server == null) {
+      // Bound and listened to once; every later message reuses it (a server can't be listened to twice).
+      server = _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen(_handle, onError: (Object _) {});
+    }
     return 'http://127.0.0.1:${server.port}/mcp';
   }
 

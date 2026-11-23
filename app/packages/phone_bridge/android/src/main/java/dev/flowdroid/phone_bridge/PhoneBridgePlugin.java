@@ -102,6 +102,19 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        // An unexpected failure in one action must not take the whole app (and its workflows) down.
+        try {
+            handle(call, result);
+        } catch (Throwable t) {
+            try {
+                result.error("failed", call.method + " failed: " + t, null);
+            } catch (Throwable ignored) {
+                // Already answered.
+            }
+        }
+    }
+
+    private void handle(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
         switch (call.method) {
             case "status":
                 Map<String, Object> status = new HashMap<>();
@@ -187,11 +200,11 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
                 Number timeout = call.argument("timeoutMs");
                 Boolean fast = call.argument("fast");
                 Browser.open(context, call.argument("session"), call.argument("url"), Boolean.TRUE.equals(fast),
-                    timeout == null ? 30000 : timeout.longValue(), result::success);
+                    timeout == null ? 30000 : timeout.longValue(), once(result));
                 break;
             }
             case "browserEval":
-                Browser.eval(call.argument("session"), call.argument("js"), result::success);
+                Browser.eval(call.argument("session"), call.argument("js"), once(result));
                 break;
             case "browserBack":
                 result.success(Browser.back(call.argument("session")));
@@ -214,7 +227,12 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
             case "browserLogin": {
                 String session = "login";
                 Browser.close(session);
-                Browser.session(context, session, false).web.loadUrl(call.argument("url"));
+                try {
+                    Browser.session(context, session, false).web.loadUrl(call.argument("url"));
+                } catch (RuntimeException e) {
+                    result.success(Browser.error(e.getMessage()));
+                    break;
+                }
                 Map<String, Object> shown = showBrowser(session, true);
                 if (shown.containsKey("error")) {
                     Browser.close(session);
@@ -231,6 +249,10 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
             }
             case "browserCookies":
                 result.success(Browser.cookies(call.argument("url")));
+                break;
+            case "browserForget":
+                Browser.forget(call.argument("url"));
+                result.success(null);
                 break;
             case "browserClearLogins":
                 Browser.clearLogins();
@@ -524,6 +546,14 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
             }
             main.post(() -> finishPhoto(out));
         }).start();
+    }
+
+    /** A reply that is sent at most once, however often the browser calls back. */
+    private static <T> java.util.function.Consumer<T> once(MethodChannel.Result result) {
+        java.util.concurrent.atomic.AtomicBoolean sent = new java.util.concurrent.atomic.AtomicBoolean();
+        return value -> {
+            if (sent.compareAndSet(false, true)) result.success(value);
+        };
     }
 
     /** Puts a browser session on screen; needs FlowDroid on screen to start from. */

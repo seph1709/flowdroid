@@ -1,6 +1,5 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../../core/json.dart';
 import '../../data/credentials.dart';
 import '../../runtime/google_auth.dart';
 import '../kit/kit.dart';
@@ -99,7 +98,7 @@ class _CredentialEditPageState extends State<CredentialEditPage> {
       _busy = true;
       _error = null;
     });
-    final r = asMap(await ServicesScope.of(context).phone.browserLogin(site));
+    final r = await ServicesScope.of(context).browserLogins.logIn(site);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -165,7 +164,14 @@ class _CredentialEditPageState extends State<CredentialEditPage> {
             const FieldLabel('Service'),
             DropdownButtonFormField<String>(
               initialValue: _type.id,
-              items: [for (final t in _offered) DropdownMenuItem(value: t.id, child: Text(t.label))],
+              isExpanded: true,
+              items: [
+                for (final t in _offered)
+                  DropdownMenuItem(
+                    value: t.id,
+                    child: Text(t.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
               onChanged: (id) => setState(() {
                 final next = credentialType(id ?? '') ?? _type;
                 if (_name.text == _type.label) _name.text = next.label;

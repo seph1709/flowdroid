@@ -9,6 +9,23 @@ import '../data/execution_record.dart';
 import '../data/repository.dart';
 import 'effects.dart';
 
+/// Lets the person stop a run. The run ends at once (the step in progress may
+/// still finish in the background, but nothing after it runs).
+class RunCancel {
+  final _stopped = Completer<void>();
+
+  bool get isCancelled => _stopped.isCompleted;
+
+  Future<void> get whenCancelled => _stopped.future;
+
+  void cancel() {
+    if (!_stopped.isCompleted) _stopped.complete();
+  }
+}
+
+/// What a stopped run reports as its error.
+const stoppedByYou = 'Stopped by you';
+
 /// Drives one execution: the core decides what runs next; whenever it waits
 /// on an effect, the runner performs it and resumes the core with the result.
 class WorkflowRunner {
@@ -42,6 +59,7 @@ class WorkflowRunner {
     WebhookResponder? respond,
     bool? usePinned,
     bool keep = true,
+    RunCancel? cancel,
   }) {
     final depth = currentDepth + 1;
     return runZoned(
@@ -54,6 +72,7 @@ class WorkflowRunner {
         respond,
         usePinned ?? mode == TriggerMode.manual,
         keep,
+        cancel,
       ),
       zoneValues: {_depthKey: depth},
     );
@@ -68,6 +87,7 @@ class WorkflowRunner {
     WebhookResponder? respond,
     bool usePinned,
     bool keep,
+    RunCancel? cancel,
   ) async {
     final startedAt = _clock();
     final workflowJson = jsonEncode({...workflow.toJson(), if (usePinned) 'usePinnedData': true});
@@ -86,20 +106,30 @@ class WorkflowRunner {
     ExecutionRecord record;
     try {
       var state = core.startExecution(workflowJson, triggerNodeId, items, startedAt);
+      var stopped = false;
       while (state.isWaiting) {
         onProgress?.call(state);
-        final result = await effects.perform(state.pendingEffect ?? const {}, respond: respond);
+        final work = effects.perform(state.pendingEffect ?? const {}, respond: respond);
+        final JsonMap? result = cancel == null
+            ? await work
+            : await Future.any<JsonMap?>([work, cancel.whenCancelled.then((_) => null)]);
+        if (result == null || (cancel?.isCancelled ?? false)) {
+          stopped = true;
+          break;
+        }
         state = core.resumeExecution(workflowJson, state, result, _clock());
       }
       onProgress?.call(state);
-      record = finish(state.status, state.error, state.runs);
+      record = stopped
+          ? finish(ExecutionStatus.error, stoppedByYou, state.runs)
+          : finish(state.status, state.error, state.runs);
     } on FlowCoreException catch (e) {
       record = finish(ExecutionStatus.error, e.message, const []);
     }
     // Test runs of a single step ([keep] false) aren't history and start no error workflow.
     if (!keep) return record;
     await repository.saveExecution(record);
-    if (record.status == ExecutionStatus.error && mode != TriggerMode.error) {
+    if (record.status == ExecutionStatus.error && mode != TriggerMode.error && record.error != stoppedByYou) {
       await _runErrorWorkflow(workflow, record);
     }
     return record;

@@ -69,6 +69,7 @@ class BrowserDriver {
     required this.saveScreenshot,
     this.poll = const Duration(milliseconds: 50),
     this.quiet = const Duration(milliseconds: 250),
+    this.elementWaitMs = 10000,
   });
 
   final BrowserPage page;
@@ -78,9 +79,19 @@ class BrowserDriver {
   final Duration poll;
   final Duration quiet;
 
+  /// Sessions are per driver: the app on screen and the background service each
+  /// have one, so a run in one never takes over the other's page.
+  final _tag = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+
   /// The session Browser steps share (kept warm between runs); one run at a time.
-  static const runSession = 'run';
-  static const agentSession = 'agent';
+  String get runSession => 'run-$_tag';
+  String get agentSession => 'agent-$_tag';
+
+  /// The longest a step waits for its element to show up before failing.
+  final int elementWaitMs;
+
+  /// The longest one call into the page may take.
+  static const callTimeout = Duration(seconds: 20);
   Future<void> _queue = Future.value();
 
   // ---------------------------------------------------------------- the `browser` effect
@@ -94,13 +105,13 @@ class BrowserDriver {
         final timeoutMs = asInt(effect['timeoutMs'], 60000);
         try {
           results.add(
-            await runScript(
+            await runWithRetry(
               asString(run['url']),
               asString(run['steps']),
               visible: effect['visible'] == true,
               fast: effect['fast'] == true,
               timeoutMs: timeoutMs,
-            ).timeout(Duration(milliseconds: timeoutMs)),
+            ).timeout(Duration(milliseconds: timeoutMs * 2)),
           );
         } on TimeoutException {
           results.add({'error': 'the steps did not finish within ${(timeoutMs / 1000).round()} s'});
@@ -115,6 +126,34 @@ class BrowserDriver {
     return done.future;
   }
 
+  /// [runScript], tried once more when the browser crashed or the network
+  /// failed before the script clicked or typed anything (so nothing is done twice).
+  Future<JsonMap> runWithRetry(
+    String url,
+    String script, {
+    bool visible = false,
+    bool fast = true,
+    int timeoutMs = 60000,
+  }) async {
+    final progress = BrowserProgress();
+    try {
+      return await runScript(url, script, visible: visible, fast: fast, timeoutMs: timeoutMs, progress: progress)
+          .timeout(Duration(milliseconds: timeoutMs));
+    } on BrowserException catch (e) {
+      if (progress.acted || !isRetryable(e.message)) rethrow;
+    } on TimeoutException {
+      if (progress.acted) rethrow;
+    }
+    await Future<void>.delayed(const Duration(seconds: 1));
+    return runScript(url, script, visible: visible, fast: fast, timeoutMs: timeoutMs)
+        .timeout(Duration(milliseconds: timeoutMs));
+  }
+
+  /// Failures that a fresh try can fix: a crashed or closed browser, or a network blip.
+  static bool isRetryable(String message) => RegExp(
+    r'crashed the browser|closed the browser|page is not open|stopped answering|ERR_(CONNECTION|TIMED_OUT|NETWORK_CHANGED|INTERNET_DISCONNECTED|ADDRESS_UNREACHABLE|EMPTY_RESPONSE)',
+  ).hasMatch(message);
+
   /// Opens [url], runs each line of [script], and returns where it ended up and what it extracted.
   Future<JsonMap> runScript(
     String url,
@@ -122,12 +161,16 @@ class BrowserDriver {
     bool visible = false,
     bool fast = true,
     int timeoutMs = 60000,
+    BrowserProgress? progress,
   }) async {
     final commands = parse(script);
-    const s = runSession;
+    final s = runSession;
+    final waitMs = timeoutMs < elementWaitMs ? timeoutMs : elementWaitMs;
+    Future<void> appear(String target) => _appear(s, target, waitMs);
     final data = <String, Object?>{};
     final screenshots = <JsonMap>[];
     await _open(s, url, fast: fast, timeoutMs: timeoutMs);
+    await settle(s);
     var shown = false;
     if (visible) shown = !(await page.show(s)).containsKey('error');
     try {
@@ -136,12 +179,18 @@ class BrowserDriver {
         switch (c.verb) {
           case 'open':
             await _open(s, c.target, fast: fast, timeoutMs: timeoutMs);
+            await settle(s);
           case 'click':
+            await appear(c.target);
+            progress?.acted = true;
             _check(await _act(s, 'fd.click(${_js(c.target)})'), failAt);
             await settle(s);
           case 'type':
+            await appear(c.target);
+            progress?.acted = true;
             _check(await _act(s, 'fd.type(${_js(c.target)}, ${_js(c.text)})'), failAt);
           case 'press':
+            progress?.acted = true;
             _check(await _act(s, 'fd.press(${_js(c.target)})'), failAt);
             await settle(s);
           case 'wait':
@@ -151,9 +200,11 @@ class BrowserDriver {
               await waitFor(s, c.target, timeoutMs: timeoutMs, failAt: failAt);
             }
           case 'extract':
+            await appear(c.target);
             final r = _check(await _act(s, 'fd.extract(${_js(c.target)}, ${c.all}, ${_js(c.attr)})'), failAt);
             data[c.name] = r['value'];
           case 'scroll':
+            if (c.target.isNotEmpty) await appear(c.target);
             _check(await _act(s, 'fd.scroll(${_js(c.target)})'), failAt);
           case 'back':
             await page.back(s);
@@ -181,13 +232,44 @@ class BrowserDriver {
         'data': data,
         'screenshots': screenshots,
       };
+    } on BrowserException catch (e) {
+      // A step failing on a login page means the saved login has ended, not that the steps are wrong.
+      if (!isRetryable(e.message) && !_isLoginUrl(url) && await _loginWall(s)) {
+        final st = await _state(s).catchError((Object _) => <String, Object?>{});
+        throw BrowserException('${_loggedOut(asString(st['url'], url))} (${e.message})');
+      }
+      rethrow;
     } finally {
       if (shown) await page.hide(s);
     }
   }
 
+  Future<bool> _loginWall(String s) async {
+    try {
+      return (await _act(s, 'fd.loginWall()'))['value'] == true;
+    } on BrowserException {
+      return false;
+    }
+  }
+
+  static bool _isLoginUrl(String url) =>
+      RegExp(r'/(login|log-in|signin|sign-in|sign_in|auth)(/|$|\?)', caseSensitive: false).hasMatch(url);
+
+  static String _loggedOut(String url) {
+    final host = Uri.tryParse(url)?.host ?? url;
+    return 'logged out of $host: the page asks to log in. Log in again in Settings → Browser logins, '
+        'then run it again';
+  }
+
   Future<void> _open(String s, String url, {required bool fast, required int timeoutMs}) async {
-    final r = await page.open(s, url, fast: fast, timeoutMs: timeoutMs);
+    final JsonMap r;
+    try {
+      r = await page
+          .open(s, url, fast: fast, timeoutMs: timeoutMs)
+          .timeout(Duration(milliseconds: timeoutMs + 5000));
+    } on TimeoutException {
+      throw const BrowserException('the page stopped answering');
+    }
     if (r['error'] case final String error) throw BrowserException(error);
   }
 
@@ -325,15 +407,32 @@ class BrowserDriver {
     failAt('“$target” did not appear');
   }
 
+  /// Waits up to [maxMs] for [target] to be on the page; the step itself reports it if it never is.
+  Future<void> _appear(String s, String target, int maxMs) async {
+    final start = DateTime.now();
+    while (DateTime.now().difference(start).inMilliseconds < maxMs) {
+      final r = await _act(s, 'fd.present(${_js(target)})');
+      if (r['value'] == true || r['error'] != null) return;
+      await Future<void>.delayed(poll * 2);
+    }
+  }
+
   Future<JsonMap> _state(String s) => _act(s, 'fd.state()');
 
   /// Runs [body] with the `fd` helpers; its returned object.
   Future<JsonMap> _act(String s, String body) async {
     final code = body.startsWith('return') ? body : 'return $body';
-    final raw = await page.eval(
-      s,
-      '(function(){$_helpers\nconst fd = window.__fd; try { $code; } catch (e) { return {error: String(e && e.message || e)}; }})()',
-    );
+    final String? raw;
+    try {
+      raw = await page
+          .eval(
+            s,
+            '(function(){$_helpers\nconst fd = window.__fd; try { $code; } catch (e) { return {error: String(e && e.message || e)}; }})()',
+          )
+          .timeout(callTimeout);
+    } on TimeoutException {
+      throw const BrowserException('the page stopped answering');
+    }
     if (raw == null || raw == 'null') throw const BrowserException('the page is not open');
     final decoded = jsonDecode(raw);
     if (decoded is String) {
@@ -361,11 +460,27 @@ if (!window.__fd) {
     }
     try { return document.querySelector(t); } catch (e) { throw new Error('not a valid selector: ' + t); }
   };
+  // A target that still finds this element on the next visit (numbers are only for this view).
+  const stable = (e) => {
+    const q = (v) => String(v).replace(/"/g, '\\"');
+    const tag = e.tagName.toLowerCase();
+    const unique = (sel) => { try { return document.querySelectorAll(sel).length === 1; } catch (x) { return false; } };
+    if (e.id && /^[A-Za-z][\w-]*$/.test(e.id) && unique('#' + e.id)) return '#' + e.id;
+    for (const a of ['name', 'aria-label', 'placeholder', 'data-testid']) {
+      const v = e.getAttribute(a);
+      if (v && unique(tag + '[' + a + '="' + q(v) + '"]')) return tag + '[' + a + '="' + q(v) + '"]';
+    }
+    const l = label(e);
+    if (l) return 'text="' + q(l) + '"';
+    return tag;
+  };
   const need = (t) => { const e = find(t); if (!e) throw new Error('nothing on the page matches ' + t); return e; };
   window.__fdMutations = 0;
   try { new MutationObserver((m) => { window.__fdMutations += m.length; }).observe(document, {subtree: true, childList: true, attributes: true, characterData: true}); } catch (e) {}
   window.__fd = {
     state: () => ({ready: document.readyState, url: location.href, title: document.title, mutations: window.__fdMutations}),
+    loginWall: () => ({value: [...document.querySelectorAll('input[type=password]')].some(visible)
+      || /\/(login|log-in|signin|sign-in|sign_in|auth)(\/|$|\?)/i.test(location.pathname)}),
     present: (t) => ({value: (() => { const e = find(t); return !!e && visible(e); })()}),
     click: (t) => { const e = need(t); e.scrollIntoView({block: 'center'}); e.focus && e.focus(); e.click(); return {ok: true}; },
     type: (t, text) => {
@@ -401,7 +516,7 @@ if (!window.__fd) {
         const tag = e.tagName.toLowerCase();
         const kind = tag === 'input' ? 'input ' + (e.type || 'text') : tag === 'a' ? 'link' : (e.getAttribute('role') || tag);
         const value = (tag === 'input' || tag === 'textarea' || tag === 'select') && e.type !== 'password' ? ' value="' + String(e.value || '').slice(0, 40) + '"' : '';
-        lines.push('[' + n + '] ' + kind + ' "' + label(e) + '"' + value);
+        lines.push('[' + n + '] ' + kind + ' "' + label(e) + '"' + value + ' · target: ' + stable(e));
       }
       const text = (document.body ? document.body.innerText : '').replace(/\n{3,}/g, '\n\n').trim();
       return {url: location.href, title: document.title, elements: lines, text: text.slice(0, maxText), more: text.length > maxText};
@@ -413,8 +528,8 @@ if (!window.__fd) {
 
   /// One AI Agent browser action (`{action, url, target, text}`), limited to [sites]
   /// (comma separated; empty = any). Returns the page as the AI sees it now.
-  Future<String> agent(JsonMap input, String sites) async {
-    const s = agentSession;
+  Future<String> agent(JsonMap input, String sites, {String? session}) async {
+    final s = session ?? agentSession;
     final allowed = sites.split(',').map((x) => x.trim().toLowerCase()).where((x) => x.isNotEmpty).toList();
     bool ok(String url) {
       if (allowed.isEmpty) return true;
@@ -481,4 +596,9 @@ if (!window.__fd) {
       if (view['more'] == true) '… (more below; scroll to read on)',
     ].join('\n');
   }
+}
+
+/// What a run has done so far: after a click or typing it is not safe to start over.
+class BrowserProgress {
+  bool acted = false;
 }

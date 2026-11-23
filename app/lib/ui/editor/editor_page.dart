@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../assistant/assistant_chat.dart';
+import '../../runtime/runner.dart';
 import '../assistant/assistant_panel.dart';
 
 import 'package:flutter/services.dart';
@@ -154,7 +155,11 @@ class _EditorPageState extends State<EditorPage> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          record.succeeded ? 'Ran ${record.runs.length} nodes in ${formatDuration(record.duration)}' : 'Run failed',
+          record.succeeded
+              ? 'Ran ${record.runs.length} nodes in ${formatDuration(record.duration)}'
+              : record.error == stoppedByYou
+              ? 'Stopped'
+              : 'Run failed',
         ),
       ),
     );
@@ -517,6 +522,7 @@ class _EditorPageState extends State<EditorPage> {
                   onFit: () => _fitToView(_viewport),
                   onHistory: _openExecutions,
                   onRun: _run,
+                  onStop: _controller.stop,
                 ),
               ],
             ),
@@ -535,6 +541,7 @@ class _Toolbar extends StatelessWidget {
     required this.onFit,
     required this.onHistory,
     required this.onRun,
+    required this.onStop,
   });
 
   final bool running;
@@ -542,6 +549,7 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onFit;
   final VoidCallback onHistory;
   final VoidCallback onRun;
+  final VoidCallback onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -561,19 +569,26 @@ class _Toolbar extends StatelessWidget {
               IconButton(tooltip: 'Fit to screen', icon: const Icon(AppIcons.fit), onPressed: onFit),
               IconButton(tooltip: 'Run history', icon: const Icon(AppIcons.history), onPressed: onHistory),
               const Spacer(),
-              FilledButton.icon(
-                onPressed: running ? null : onRun,
-                icon: running
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              // While it runs the button stops it; the spinner shows it is still going.
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: running
+                    ? FilledButton.icon(
+                        key: const ValueKey('stop'),
+                        onPressed: onStop,
+                        icon: SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: c.danger),
+                        ),
+                        label: const Text('Stop'),
+                        style: FilledButton.styleFrom(backgroundColor: c.dangerSoft, foregroundColor: c.danger),
                       )
-                    : const Icon(AppIcons.play, size: 20),
-                label: Text(running ? 'Running' : 'Run'),
-                style: FilledButton.styleFrom(
-                  disabledBackgroundColor: c.accent.withValues(alpha: 0.6),
-                  disabledForegroundColor: Colors.white,
-                ),
+                    : FilledButton.icon(
+                        key: const ValueKey('run'),
+                        onPressed: onRun,
+                        icon: const Icon(AppIcons.play, size: 20),
+                        label: const Text('Run'),
+                      ),
               ),
             ],
           ),
@@ -622,6 +637,18 @@ class _CanvasNotice extends StatelessWidget {
         ].join(' · '),
         action: const Padding(padding: EdgeInsets.all(Space.md), child: QuietSpinner(size: 16)),
         bordered: true,
+      );
+    }
+    if (last != null && !controller.running && last.error == stoppedByYou) {
+      // A stop the person chose is not a failure.
+      return _strip(
+        context,
+        background: c.grouped,
+        foreground: c.textSecondary,
+        icon: AppIcons.close,
+        text: 'Stopped by you',
+        bordered: true,
+        action: TextButton(onPressed: onOpenExecutions, child: const Text('Details')),
       );
     }
     if (last != null && !controller.running && last.status != ExecutionStatus.success) {

@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flowdroid/core/execution_state.dart';
+import 'package:flowdroid/core/json.dart';
+import 'package:flowdroid/core/workflow.dart';
+import 'package:flowdroid/runtime/effects.dart';
 import 'package:flowdroid/data/execution_record.dart';
 import 'package:flowdroid/data/templates.dart';
 import 'package:flowdroid/runtime/runner.dart';
@@ -7,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support.dart';
 
 void main() {
+  cancelTests();
   test('catalog lists every node type with its parameters', () {
     final catalog = core.nodeCatalog();
     expect(catalog.map((t) => t.type), containsAll(['trigger.manual', 'http.request', 'android.notify', 'core.merge']));
@@ -66,5 +72,36 @@ void main() {
     for (final t in templates) {
       expect(core.validateWorkflow(t.build().toJson()), isEmpty, reason: t.title);
     }
+  });
+}
+
+class _NeverEffects extends EffectDispatcher {
+  @override
+  Map<String, Future<JsonMap> Function(JsonMap effect)> get handlers => {
+    'vibrate': (_) => Completer<JsonMap>().future,
+  };
+}
+
+void cancelTests() {
+  test('a stopped run ends at once and is saved as stopped', () async {
+    final repository = await tempRepository();
+    final runner = WorkflowRunner(core: core, effects: _NeverEffects(), repository: repository);
+    final wf = Workflow(
+      id: 'wf',
+      name: 'Stuck',
+      nodes: [
+        WorkflowNode(id: 'start', name: 'Start', type: 'trigger.manual'),
+        WorkflowNode(id: 'buzz', name: 'Buzz', type: 'android.vibrate', params: {'ms': 100}),
+      ],
+      connections: [const Connection(from: 'start', to: 'buzz')],
+    );
+    final cancel = RunCancel();
+    final run = runner.run(wf, triggerNodeId: 'start', mode: TriggerMode.manual, items: const [{}], cancel: cancel);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    cancel.cancel();
+    final record = await run.timeout(const Duration(seconds: 2));
+    expect(record.error, stoppedByYou);
+    expect(record.runs.map((r) => r.name), ['Start']);
+    expect((await repository.executions('wf')).single.error, stoppedByYou);
   });
 }

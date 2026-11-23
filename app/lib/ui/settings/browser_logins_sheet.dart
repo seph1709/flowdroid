@@ -1,18 +1,23 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/json.dart';
+import '../../runtime/browser/browser_logins.dart';
 import '../icons.dart';
+import '../kit/kit.dart';
 import '../services_scope.dart';
 import '../theme.dart';
+import '../widgets/format.dart';
 
-/// Logging in to sites in FlowDroid's browser, so Browser steps and the AI
-/// Agent's browser tool use those logins; and logging out of all of them.
+/// Logging in to sites in FlowDroid's browser, so Browser steps, the AI Agent's
+/// browser tool and the assistant use those logins. A login stays until the site
+/// ends it or you log out here.
 class BrowserLoginsSheet extends StatefulWidget {
   const BrowserLoginsSheet({super.key});
 
   static Future<void> show(BuildContext context) => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     builder: (_) => const BrowserLoginsSheet(),
   );
 
@@ -21,9 +26,17 @@ class BrowserLoginsSheet extends StatefulWidget {
 }
 
 class _BrowserLoginsSheetState extends State<BrowserLoginsSheet> {
-  final _site = TextEditingController(text: 'https://');
+  final _site = TextEditingController();
+  late final BrowserLogins _logins = ServicesScope.of(context).browserLogins;
+  List<SavedLogin>? _list;
   String? _message;
   bool _busy = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_list == null) _reload();
+  }
 
   @override
   void dispose() {
@@ -31,72 +44,132 @@ class _BrowserLoginsSheetState extends State<BrowserLoginsSheet> {
     super.dispose();
   }
 
-  Future<void> _logIn() async {
-    var url = _site.text.trim();
-    if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://$url';
+  Future<void> _reload() async {
+    final list = await _logins.list();
+    if (mounted) setState(() => _list = list);
+  }
+
+  Future<void> _logIn(String url) async {
+    if (url.trim().isEmpty) return;
     setState(() {
       _busy = true;
       _message = null;
     });
-    final r = asMap(await ServicesScope.of(context).phone.browserLogin(url));
+    final r = await _logins.logIn(url);
     if (!mounted) return;
     setState(() {
       _busy = false;
       _message = r['error'] is String
           ? asString(r['error'])
-          : 'Saved. Browser steps and the AI Agent now use this login (until the site logs you out).';
+          : 'Saved. Automations use this login until the site ends it.';
     });
+    _site.clear();
+    await _reload();
+  }
+
+  Future<void> _forget(SavedLogin login) async {
+    await _logins.forget(login);
+    if (!mounted) return;
+    setState(() => _message = 'Logged out of ${login.site}.');
+    await _reload();
   }
 
   Future<void> _logOutAll() async {
-    await ServicesScope.of(context).phone.browserClearLogins();
-    if (mounted) setState(() => _message = 'Logged out of every site in FlowDroid’s browser.');
+    await _logins.clearAll();
+    if (!mounted) return;
+    setState(() => _message = 'Logged out of every site in FlowDroid’s browser.');
+    await _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final c = AppColors.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl + MediaQuery.viewInsetsOf(context).bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Browser logins', style: theme.textTheme.titleLarge),
-            const SizedBox(height: Space.sm),
-            Text(
-              'Log in to a site once in FlowDroid’s browser. Browser steps, the AI Agent’s browser tool and '
-              '“Web session” credentials use that login; FlowDroid keeps it like a browser does, on this phone only.',
+    final list = _list;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: Space.xl),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.page, 0, Space.page, Space.xs),
+            child: Text('Browser logins', style: theme.textTheme.titleLarge),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.page, 0, Space.page, Space.lg),
+            child: Text(
+              'Log in once; Browser steps, the AI Agent and the assistant use it, headless or on screen. It stays '
+              'on this phone until the site ends the session or you log out here.',
               style: theme.textTheme.bodySmall,
             ),
-            const SizedBox(height: Space.lg),
-            TextField(
-              controller: _site,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: const InputDecoration(hintText: 'https://example.com/login'),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _site,
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    textInputAction: TextInputAction.go,
+                    onSubmitted: _busy ? null : _logIn,
+                    decoration: const InputDecoration(hintText: 'Site, e.g. github.com/login'),
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                FilledButton(
+                  onPressed: _busy ? null : () => _logIn(_site.text),
+                  child: Text(_busy ? 'Waiting…' : 'Log in'),
+                ),
+              ],
             ),
-            const SizedBox(height: Space.md),
-            FilledButton.icon(
-              onPressed: _busy ? null : _logIn,
-              icon: const Icon(AppIcons.browser),
-              label: Text(_busy ? 'Waiting for you to tap Done…' : 'Log in'),
+          ),
+          if (_message != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.page, Space.md, Space.page, 0),
+              child: Text(_message!, style: theme.textTheme.bodySmall?.copyWith(color: c.textSecondary)),
             ),
-            const SizedBox(height: Space.sm),
-            OutlinedButton(onPressed: _busy ? null : _logOutAll, child: const Text('Log out of all sites')),
-            if (_message != null) ...[
-              const SizedBox(height: Space.md),
-              Text(_message!, style: theme.textTheme.bodySmall?.copyWith(color: c.textSecondary)),
-            ],
-            const SizedBox(height: Space.md),
-            Text(
+          if (list == null)
+            const Padding(padding: EdgeInsets.all(Space.xl), child: Center(child: QuietSpinner()))
+          else if (list.isNotEmpty) ...[
+            const SectionLabel('LOGGED IN'),
+            GroupedSection(
+              children: [
+                for (final l in list)
+                  ListTile(
+                    leading: Icon(AppIcons.globe, color: c.textSecondary),
+                    title: Text(l.site),
+                    subtitle: Text('Logged in ${formatRelative(l.at)}'),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'More',
+                      icon: Icon(AppIcons.more, color: c.textTertiary),
+                      onSelected: (v) => v == 'again' ? _logIn(l.url) : _forget(l),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'again', child: Text('Log in again')),
+                        PopupMenuItem(value: 'forget', child: Text('Log out')),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.page, Space.md, Space.page, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(onPressed: _busy ? null : _logOutAll, child: const Text('Log out of all sites')),
+              ),
+            ),
+          ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.page, Space.md, Space.page, 0),
+            child: Text(
               'Google and some banks block logging in inside apps; connect those with their own sign-in instead.',
               style: theme.textTheme.bodySmall?.copyWith(color: c.textTertiary),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -46,7 +46,7 @@ public class BrowserActivity extends Activity {
         super.onCreate(state);
         sessionId = getIntent().getStringExtra(EXTRA_SESSION);
         Browser.Session session = sessionId == null ? null : Browser.get(sessionId);
-        if (session == null) {
+        if (session == null || session.dead) {
             finish();
             return;
         }
@@ -87,7 +87,7 @@ public class BrowserActivity extends Activity {
     @Override
     public void onBackPressed() {
         Browser.Session session = sessionId == null ? null : Browser.get(sessionId);
-        if (session != null && session.web.canGoBack()) {
+        if (session != null && !session.dead && session.web.canGoBack()) {
             session.web.goBack();
         } else {
             super.onBackPressed();
@@ -100,13 +100,11 @@ public class BrowserActivity extends Activity {
             if (OPEN.get(sessionId) == this) OPEN.remove(sessionId);
             Browser.Session session = Browser.get(sessionId);
             String url = "";
-            if (session != null) {
+            if (session != null && !session.dead) {
                 session.shown = false;
                 url = session.web.getUrl() == null ? "" : session.web.getUrl();
-                // Back to running hidden, at phone-screen size.
-                ViewGroup parent = (ViewGroup) session.web.getParent();
-                if (parent != null) parent.removeView(session.web);
-                Browser.layOut(session.web);
+                // Back to running headless, at phone-screen size.
+                Browser.hideHeadless(this, session);
                 session.touch();
             }
             CookieManager.getInstance().flush();

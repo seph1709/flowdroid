@@ -169,6 +169,14 @@ void main() {
     expect((actions.single as AssistantAction).summary, 'Added “Buzz”');
   });
 
+  test('the MCP server serves every message of a chat, not only the first', () async {
+    final server = McpToolServer();
+    final first = await server.start();
+    // The second message used to fail with "Stream has already been listened to".
+    expect(await server.start(), first);
+    await server.close();
+  });
+
   test('MCP server over HTTP needs the token', () async {
     // The test binding answers every real HTTP request with 400; this one must be real.
     HttpOverrides.global = null;

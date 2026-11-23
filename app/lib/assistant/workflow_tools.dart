@@ -1,11 +1,14 @@
 import 'dart:convert';
 
+import 'dart:async';
+
 import '../core/execution_state.dart';
 import '../core/json.dart';
 import '../core/layout.dart';
 import '../core/node_catalog.dart';
 import '../core/workflow.dart';
 import '../data/execution_record.dart';
+import '../runtime/browser/browser_driver.dart';
 import '../ui/editor/editor_controller.dart';
 
 /// A tool the assistant can call: what it does and the JSON Schema of its input.
@@ -193,6 +196,31 @@ class WorkflowTools {
       _object({'node': _nodeRef}, ['node']),
     ),
     ToolSpec(
+      'browse',
+      'Looks at a website in FlowDroid’s browser, with the person’s saved logins, to learn how to automate it. '
+          'Actions: open (url), read, click (target), type (target, text), press (text: key), scroll, back. Returns '
+          'the page: title, address, numbered elements each with a stable "target" to use in Browser step scripts, '
+          'and the page text. Use it instead of asking the person for selectors. Look and navigate; do not submit, '
+          'buy, send or delete anything unless the person asked for exactly that.',
+      _object({
+        'action': {
+          'type': 'string',
+          'enum': ['open', 'read', 'click', 'type', 'press', 'scroll', 'back'],
+        },
+        'url': {'type': 'string', 'description': 'For open: the full address.'},
+        'target': {'type': 'string', 'description': 'An element number from the last view, or a target it gave.'},
+        'text': {'type': 'string', 'description': 'For type: the text. For press: a key such as Enter.'},
+      }, ['action']),
+    ),
+    ToolSpec(
+      'log_in_to_site',
+      'Opens a site on screen so the person logs in themselves (you never see or type their password), then '
+          'keeps that login for every automation until the site ends it. Use it when browse lands on a login page.',
+      _object({
+        'url': {'type': 'string', 'description': 'The site’s login page or home page.'},
+      }, ['url']),
+    ),
+    ToolSpec(
       'get_last_run',
       'The last run of this workflow: status, error, and every step’s result with a sample of its output.',
       _object({}),
@@ -243,6 +271,8 @@ class WorkflowTools {
         ),
         'run_workflow' => await _run(input),
         'run_step' => await _runStep(input),
+        'browse' => await _browse(input),
+        'log_in_to_site' => await _logIn(input),
         'get_last_run' => ToolOutcome(_encode(_runJson(controller.lastExecution)), summary: 'Read the last run'),
         'get_step_output' => _stepOutput(input),
         _ => ToolOutcome('unknown tool $name', isError: true),
@@ -308,8 +338,9 @@ class WorkflowTools {
     ParamKind.fields: 'list of {"name": "path.to.field", "value": "text or {{ expression }}"}',
     ParamKind.keyValues: 'list of {"name": "...", "value": "..."}',
     ParamKind.tools:
-        'list of {"kind": "http|command|workflow|table", "name": "tool_name", "description": "...", '
-        '"config": "http: allowed URL prefix; workflow: workflow id; table: table name"}',
+        'list of {"kind": "http|command|workflow|table|mcp|browser", "name": "tool_name", "description": "...", '
+        '"config": "http: allowed URL prefix; workflow: workflow id; table: table name; '
+        'browser: allowed sites, comma separated (empty = any)"}',
     ParamKind.credential: 'the name of a saved credential of one of the listed types (see list_credentials)',
     ParamKind.workflow: 'a workflow id (see list_workflows)',
     ParamKind.json: 'JSON text; may contain {{ expressions }}',
@@ -485,6 +516,47 @@ class WorkflowTools {
   }
 
   void _layout(Workflow wf) => layoutVertically(wf, (n) => controller.typeOf(n)?.isTrigger ?? false);
+
+  // ---- the browser ----
+
+  Future<ToolOutcome> _browse(JsonMap input) async {
+    final browser = controller.services.browser;
+    if (browser == null) throw const ToolInputError('the browser is not available here');
+    final action = asString(input['action']);
+    try {
+      final view = await browser
+          .agent(input, '', session: 'assistant-${_wf.id}')
+          .timeout(const Duration(seconds: 60));
+      final url = RegExp(r'^URL: (.*)$', multiLine: true).firstMatch(view)?.group(1) ?? '';
+      final host = Uri.tryParse(url)?.host ?? '';
+      return ToolOutcome(_cut(view), summary: switch (action) {
+        'open' => 'Opened $host',
+        'read' => 'Looked at $host',
+        'click' => 'Clicked on $host',
+        'type' => 'Typed on $host',
+        _ => 'Browsed $host',
+      });
+    } on BrowserException catch (e) {
+      throw ToolInputError('browser: ${e.message}');
+    } on TimeoutException {
+      throw const ToolInputError('browser: the page took too long');
+    }
+  }
+
+  Future<ToolOutcome> _logIn(JsonMap input) async {
+    final url = asString(input['url']).trim();
+    if (url.isEmpty) throw const ToolInputError('give the site to log in to');
+    final r = await controller.services.browserLogins.logIn(url);
+    if (r['error'] case final String error) {
+      return ToolOutcome('could not show the login page: $error', summary: 'Login not shown', isError: true);
+    }
+    return ToolOutcome(
+      _encode({'loggedIn': true, 'endedAt': r['url'], 'note': 'the person tapped Done; browse again to check'}),
+      summary: 'You logged in to ${Uri.tryParse(url.startsWith('http') ? url : 'https://$url')?.host ?? url}',
+    );
+  }
+
+  static String _cut(String s) => s.length > _maxText ? '${s.substring(0, _maxText)}… (cut)' : s;
 
   // ---- running ----
 
