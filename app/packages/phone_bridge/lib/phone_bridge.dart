@@ -230,6 +230,9 @@ class PhoneBridge {
   /// Logs out of every site in the in-app browser.
   Future<Object?> browserClearLogins() => _call('browserClearLogins');
 
+  /// Logs out of the site at [url] only (its cookies are removed).
+  Future<Object?> browserForget(String url) => _call('browserForget', {'url': url});
+
   /// A photo, gallery pick or scan: `{files: [paths], pdf?, cancelled?}` or `{error}`.
   Future<Object?> photo(String source, {bool multiple = false, int pages = 5, bool pdf = true}) =>
       _call('photo', {'source': source, 'multiple': multiple, 'pages': pages, 'pdf': pdf});

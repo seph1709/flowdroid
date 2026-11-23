@@ -64,6 +64,7 @@ class ParamEditor extends StatelessWidget {
       children: [
         FieldLabel(spec.label),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: spec.options.contains(value) ? value as String? : null,
           items: [for (final o in spec.options) DropdownMenuItem(value: o, child: Text(_humanize(o)))],
           onChanged: onChanged,
@@ -481,6 +482,7 @@ class _ConditionRow extends StatelessWidget {
         const SizedBox(height: 8),
         const FieldLabel('Operator'),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: conditionOperators.contains(op) ? op : 'equals',
           borderRadius: BorderRadius.circular(14),
           icon: const Icon(AppIcons.chevronDown),

@@ -5,6 +5,7 @@ import 'dart:ui' show Offset;
 import 'package:flutter/foundation.dart';
 
 import '../../app_services.dart';
+import '../../runtime/runner.dart';
 import '../../core/execution_state.dart';
 import '../../core/json.dart';
 import '../../core/node_catalog.dart';
@@ -38,6 +39,9 @@ class EditorController extends ChangeNotifier {
   /// Node the running execution is waiting on (HTTP call, notification, ...).
   String? activeNodeId;
   bool running = false;
+
+  /// Stops the run in progress; null when nothing runs.
+  RunCancel? _cancel;
 
   /// Steps finished so far in the running execution.
   int stepsDone = 0;
@@ -305,6 +309,7 @@ class EditorController extends ChangeNotifier {
     await save();
     running = true;
     stepsDone = 0;
+    final cancel = _cancel = RunCancel();
     notifyListeners();
     try {
       final record = await services.runner.run(
@@ -312,6 +317,7 @@ class EditorController extends ChangeNotifier {
         triggerNodeId: start.id,
         mode: TriggerMode.manual,
         items: [_sampleTriggerItem(start)],
+        cancel: cancel,
         onProgress: (state) {
           activeNodeId = state.isWaiting ? state.pendingNodeId : null;
           stepsDone = asList(state.json['runs']).length;
@@ -323,6 +329,7 @@ class EditorController extends ChangeNotifier {
     } finally {
       running = false;
       activeNodeId = null;
+      _cancel = null;
       notifyListeners();
     }
   }
@@ -361,6 +368,7 @@ class EditorController extends ChangeNotifier {
     }
     running = true;
     activeNodeId = node.id;
+    final cancel = _cancel = RunCancel();
     notifyListeners();
     try {
       final solo = await services.runner.run(
@@ -370,7 +378,9 @@ class EditorController extends ChangeNotifier {
         items: const [{}],
         usePinned: true,
         keep: false,
+        cancel: cancel,
       );
+      if (cancel.isCancelled) return stoppedByYou;
       final result = solo.runOf(node.id);
       if (result == null) return solo.error ?? 'the step did not run: it received no items';
       final base = lastExecution;
@@ -391,6 +401,7 @@ class EditorController extends ChangeNotifier {
     } finally {
       running = false;
       activeNodeId = null;
+      _cancel = null;
       notifyListeners();
     }
   }
@@ -416,6 +427,9 @@ class EditorController extends ChangeNotifier {
         },
     };
   }
+
+  /// Stops the run (or single-step run) in progress.
+  void stop() => _cancel?.cancel();
 
   /// A manual run of a webhook or schedule trigger gets an item shaped like the real one.
   JsonMap _sampleTriggerItem(WorkflowNode trigger) => switch (trigger.type) {

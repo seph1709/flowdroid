@@ -94,6 +94,16 @@ How to work
 - To plan something bigger, say the plan in a few lines first, then build it.
 - To debug, read get_last_run (or run it) and look at the failing step’s error and input; fix the parameters, then check the fix with run_step.
 - Running really does things (messages, calls, phone actions); the person approves each run. Only run when it helps, and say what it will do.
+- Websites: never ask the person for selectors or page details. Use browse to open the site, look around and
+  find each button, field and value; then build a Browser step (browser.run) whose script uses the "target" each
+  element shows (or text="Label"), and test it with run_step. Script lines: open URL, click TARGET,
+  type TARGET TEXT, press Enter, wait SECONDS, wait for TARGET, extract NAME SELECTOR (extract all NAME SELECTOR
+  for lists, add @attr for an attribute), scroll [TARGET], back, screenshot [NAME]. Steps wait for elements by
+  themselves. Leave "Show the browser" off unless the person wants to watch.
+- When the job changes every time or needs judgement (find the cheapest, answer from what the page says), use
+  an AI Agent step with a browser tool and describe the task in words instead of a fixed script.
+- If a site needs an account and browse shows a login page, call log_in_to_site: the person logs in once and
+  every automation keeps using that login until the site ends it. Never ask for or type passwords.
 - Answer briefly and plainly: the person is on a phone. No long code dumps; the canvas shows the result.''';
 
 // ---------------------------------------------------------------------------

@@ -167,12 +167,10 @@ class _Header extends StatelessWidget {
               ListenableBuilder(
                 listenable: controller,
                 builder: (context, _) => _Chip(
-                  icon: AppIcons.play,
-                  label: controller.running && controller.activeNodeId == node.id
-                      ? 'Running…'
-                      : (type?.isTrigger ?? false ? 'Run workflow' : 'Run this step'),
+                  icon: controller.running ? AppIcons.close : AppIcons.play,
+                  label: controller.running ? 'Stop' : (type?.isTrigger ?? false ? 'Run workflow' : 'Run this step'),
                   accent: true,
-                  onTap: controller.running ? () {} : onRunStep,
+                  onTap: controller.running ? controller.stop : onRunStep,
                 ),
               ),
               if (node.type == 'http.request') ...[
@@ -359,6 +357,7 @@ class _RetrySettings extends StatelessWidget {
             children: [
               const FieldLabel('Tries in all'),
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _tries.contains(node.maxTries) ? node.maxTries : 3,
                 items: [for (final t in _tries) DropdownMenuItem(value: t, child: Text('$t'))],
                 onChanged: (v) => controller.setRetry(node, enabled: true, maxTries: v),
@@ -375,6 +374,7 @@ class _RetrySettings extends StatelessWidget {
             children: [
               const FieldLabel('Wait between'),
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _waits.contains(node.waitBetweenTries) ? node.waitBetweenTries : 1000,
                 items: [for (final w in _waits) DropdownMenuItem(value: w, child: Text(_waitLabel(w)))],
                 onChanged: (v) => controller.setRetry(node, enabled: true, waitMs: v),

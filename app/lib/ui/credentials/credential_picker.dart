@@ -42,6 +42,7 @@ class CredentialPicker extends StatelessWidget {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       key: ValueKey('${names.join(',')}|$value'),
                       initialValue: names.contains(value) ? value : null,
                       hint: Text(matching.isEmpty ? 'None saved yet' : 'Choose…'),

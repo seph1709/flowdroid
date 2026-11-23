@@ -12,6 +12,7 @@ import 'data/repository.dart';
 import 'runtime/agent_tools.dart';
 import 'runtime/background_health.dart';
 import 'runtime/browser/browser_driver.dart';
+import 'runtime/browser/browser_logins.dart';
 import 'runtime/browser/phone_browser.dart';
 import 'runtime/cli_chat.dart';
 import 'runtime/code_runner.dart';
@@ -52,6 +53,7 @@ class AppServices {
     Speech? speech,
     McpClient? mcp,
     CalendarReader? calendar,
+    this.browser,
   }) : catalog = core.nodeCatalog(),
        mcp = mcp ?? McpClient(linux: linux, credentials: CredentialResolver(credentials)),
        phone = phone ?? PhoneBridge(),
@@ -99,6 +101,7 @@ class AppServices {
     Future<List<JsonMap>> callWorkflow(String id, List<JsonMap> items) => services.runner.runSubWorkflow(id, items);
 
     services = AppServices(
+      browser: browser,
       linux: linux,
       core: core ?? FlowCore.shared,
       repository: Repository(dataDir),
@@ -161,6 +164,12 @@ class AppServices {
   /// MCP sessions, shared by runs and the editor's "Find tools".
   final McpClient mcp;
   final List<NodeType> catalog;
+
+  /// FlowDroid's in-app browser (with the person's saved logins); null in tests.
+  final BrowserDriver? browser;
+
+  /// Sites logged in to in the in-app browser.
+  late final BrowserLogins browserLogins = BrowserLogins(dataDir, phone);
   final WorkflowRunner runner;
   late final Scheduler scheduler;
   late final WebhookServer webhooks;

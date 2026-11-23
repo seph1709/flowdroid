@@ -225,6 +225,7 @@ class _ToolRow extends StatelessWidget {
       children: [
         const FieldLabel('Kind'),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: kind,
           items: [for (final e in _toolKinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
           onChanged: (v) => onChanged({...row, 'kind': v, 'config': v == 'command' ? 'ubuntu' : ''}),
@@ -242,6 +243,7 @@ class _ToolRow extends StatelessWidget {
             children: [
               const FieldLabel('Runs in'),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: config == 'phone' ? 'phone' : 'ubuntu',
                 items: const [
                   DropdownMenuItem(value: 'ubuntu', child: Text('Ubuntu')),

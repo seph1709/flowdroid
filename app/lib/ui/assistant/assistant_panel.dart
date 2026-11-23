@@ -7,6 +7,7 @@ import '../icons.dart';
 import '../kit/kit.dart';
 import '../services_scope.dart';
 import '../theme.dart';
+import '../../core/param_helpers.dart';
 import 'assistant_settings_page.dart';
 
 /// The assistant's chat over the editor: it builds and fixes the workflow on
@@ -69,7 +70,18 @@ class _AssistantPanelState extends State<AssistantPanel> {
 
   Future<void> _loadConfig() async {
     final services = ServicesScope.of(context);
-    final config = await AssistantConfig.load(services.dataDir);
+    var config = await AssistantConfig.load(services.dataDir);
+    if (config.kind == AssistantKind.api && !config.ready) {
+      // A saved AI credential is enough: use it rather than asking to set up.
+      final ai = (await services.credentials.all()).where((c) => assistantCredentialTypes.contains(c.type)).firstOrNull;
+      if (ai != null) {
+        config = config.copyWith(
+          credential: ai.name,
+          model: config.model.isEmpty ? (modelSuggestions[ai.type]?.first ?? '') : config.model,
+        );
+        if (config.ready) await config.save(services.dataDir);
+      }
+    }
     if (!mounted) return;
     if (config.ready) _chat.configure(config, services);
     setState(() => _config = config);
