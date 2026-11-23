@@ -6,9 +6,19 @@ use super::api::{ApiCall, api_request, api_resume, credential_param, enc, per_it
 use crate::engine::context::Item;
 use crate::errors::{ErrorKind, Result, fail};
 use crate::json::parse_json;
-use crate::value::{Obj, Val, get_key, obj, to_num};
+use crate::value::{Obj, Val, get_key, obj, to_num, to_template_str};
 
-const PROVIDERS: &[&str] = &["anthropic", "openai", "gemini", "openaiCompatible"];
+/// Providers reached over their HTTP API with a stored credential.
+const API_PROVIDERS: &[&str] = &["anthropic", "openai", "gemini", "openaiCompatible"];
+/// Claude Code in FlowDroid's Ubuntu, signed in with the person's own account; no credential.
+const CLAUDE_CODE: &str = "claudeCode";
+const PROVIDERS: &[&str] = &[
+    "anthropic",
+    "openai",
+    "gemini",
+    "openaiCompatible",
+    CLAUDE_CODE,
+];
 pub const DEFAULT_CLAUDE_MODEL: &str = "claude-opus-5-5";
 pub const ANTHROPIC_VERSION: &str = "2026-10-21";
 const JSON_INSTRUCTION: &str = "Reply with only valid JSON, no other text.";
@@ -28,6 +38,10 @@ fn model(run: &NodeRun<'_>, index: usize, p: &str) -> Result<String> {
     }
     if p == "anthropic" {
         return Ok(DEFAULT_CLAUDE_MODEL.to_owned());
+    }
+    // Claude Code picks its own default model.
+    if p == CLAUDE_CODE {
+        return Ok(String::new());
     }
     fail(ErrorKind::Node, "model is required")
 }
@@ -108,6 +122,87 @@ fn chat_image(run: &NodeRun<'_>, index: usize) -> Result<(String, &'static str)>
         return fail(ErrorKind::Node, format!("{image} is not an image"));
     }
     Ok((image, mime))
+}
+
+/// One prompt for Claude Code; the host runs it in Ubuntu and returns the reply.
+fn build_cli_chat(run: &NodeRun<'_>, index: usize) -> Result<Val> {
+    let prompt = run.text("prompt", index)?;
+    if prompt.is_empty() {
+        return fail(ErrorKind::Node, "prompt is empty");
+    }
+    let wants_json = run.param("json").is_true();
+    let system = run.text("system", index)?;
+    let system = [
+        system.as_str(),
+        if wants_json { JSON_INSTRUCTION } else { "" },
+    ]
+    .iter()
+    .filter(|s| !s.is_empty())
+    .copied()
+    .collect::<Vec<_>>()
+    .join("\n\n");
+    let timeout = to_num(&run.value("timeout", index)?);
+    let (image, _) = chat_image(run, index)?;
+    Ok(Val::Obj(obj([
+        ("prompt", Val::Str(prompt)),
+        ("system", Val::Str(system)),
+        ("model", Val::Str(run.text("model", index)?)),
+        ("image", Val::Str(image)),
+        (
+            "timeoutMs",
+            Val::Num((if timeout >= 1.0 { timeout } else { 1.0 }) * 1000.0),
+        ),
+    ])))
+}
+
+/// Claude Code's replies, one per chat: `{text, model}` or `{error}`.
+fn resume_cli_chat(run: &NodeRun<'_>, result: &Obj) -> Result<Vec<Vec<Item>>> {
+    if let Val::Str(error) = get_key(result, "error") {
+        return fail(ErrorKind::Node, error.clone());
+    }
+    let Val::Arr(replies) = get_key(result, "replies") else {
+        return fail(ErrorKind::Node, "Claude Code returned no reply");
+    };
+    let mut out = Vec::new();
+    for (i, reply) in replies.iter().enumerate() {
+        let Val::Obj(reply) = reply else {
+            return fail(ErrorKind::Node, "Claude Code returned no reply");
+        };
+        if let Val::Str(failed) = get_key(reply, "error") {
+            return fail(ErrorKind::Node, format!("Claude Code: {failed}"));
+        }
+        let text = match get_key(reply, "text") {
+            Val::Str(s) => s.clone(),
+            _ => String::new(),
+        };
+        let model = match get_key(reply, "model") {
+            Val::Str(s) => s.clone(),
+            _ => run.text("model", i)?,
+        };
+        out.extend(with_json(
+            run,
+            obj([
+                ("text", Val::Str(text)),
+                ("provider", CLAUDE_CODE.into()),
+                ("model", Val::Str(model)),
+            ]),
+        )?);
+    }
+    Ok(vec![out])
+}
+
+/// [item], with its text parsed into `json` when the node asks for a JSON reply.
+fn with_json(run: &NodeRun<'_>, mut item: Obj) -> Result<Vec<Item>> {
+    if run.param("json").is_true() {
+        let text = to_template_str(get_key(&item, "text"));
+        match parse_json(&text, "reply", ErrorKind::Input) {
+            Ok(v) => {
+                item.insert("json".into(), v);
+            }
+            Err(_) => return fail(ErrorKind::Node, "the reply is not valid JSON"),
+        }
+    }
+    Ok(vec![item])
 }
 
 fn build_chat(run: &NodeRun<'_>, index: usize) -> Result<Val> {
@@ -283,25 +378,37 @@ fn resume_chat(run: &NodeRun<'_>, result: &Obj) -> Result<Vec<Vec<Item>>> {
     api_resume(result, "AI", |body, index| {
         let p = provider(run)?;
         let text = reply_text(&p, &body)?;
-        let mut item = obj([
-            ("text", Val::Str(text.clone())),
-            ("provider", Val::Str(p.clone())),
-            ("model", Val::Str(model(run, index, &p)?)),
-        ]);
-        if run.param("json").is_true() {
-            match parse_json(&text, "reply", ErrorKind::Input) {
-                Ok(v) => {
-                    item.insert("json".into(), v);
-                }
-                Err(_) => return fail(ErrorKind::Node, "the reply is not valid JSON"),
-            }
-        }
-        Ok(vec![item])
+        with_json(
+            run,
+            obj([
+                ("text", Val::Str(text)),
+                ("provider", Val::Str(p.clone())),
+                ("model", Val::Str(model(run, index, &p)?)),
+            ]),
+        )
     })
 }
 
 fn run_chat(run: &NodeRun<'_>) -> Result<NodeResult> {
-    per_item(run, |i| build_chat(run, i))
+    if provider(run)? != CLAUDE_CODE {
+        return per_item(run, |i| build_chat(run, i));
+    }
+    let chats = (0..run.items().len())
+        .map(|i| build_cli_chat(run, i))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(NodeResult::Effect(obj([
+        ("type", "cliChat".into()),
+        ("agent", CLAUDE_CODE.into()),
+        ("chats", Val::Arr(chats)),
+    ])))
+}
+
+fn resume_any(run: &NodeRun<'_>, result: &Obj) -> Result<Vec<Vec<Item>>> {
+    if provider(run)? == CLAUDE_CODE {
+        resume_cli_chat(run, result)
+    } else {
+        resume_chat(run, result)
+    }
 }
 
 pub static AI_NODES: &[NodeSpec] = &[NodeSpec {
@@ -319,9 +426,9 @@ pub static AI_NODES: &[NodeSpec] = &[NodeSpec {
             Default::Text("anthropic"),
         )
         .options(PROVIDERS),
-        credential_param(PROVIDERS),
+        credential_param(API_PROVIDERS),
         ParamSpec::new("model", "Model", ParamKind::Text, Default::Text(""))
-            .hint("empty = claude-opus-5-5 for Claude"),
+            .hint("empty = claude-opus-5-5 for Claude, Claude Code's own default for Claude Code"),
         ParamSpec::new("system", "Instructions", ParamKind::Text, Default::Text("")),
         ParamSpec::new(
             "prompt",
@@ -345,6 +452,6 @@ pub static AI_NODES: &[NodeSpec] = &[NodeSpec {
         ),
     ],
     run: run_chat,
-    resume: Some(resume_chat),
+    resume: Some(resume_any),
     step: None,
 }];

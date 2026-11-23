@@ -186,6 +186,8 @@ const _toolKinds = {
   'command': 'Shell command',
   'workflow': 'Another workflow',
   'table': 'Phone table',
+  'mcp': 'MCP server (all its tools)',
+  'browser': 'Web browser (with your logins)',
 };
 
 /// The AI Agent's tools: what each one does and how it is set up.
@@ -257,6 +259,12 @@ class _ToolRow extends StatelessWidget {
             onChanged: (v) => onChanged({...row, 'config': v}),
           ),
           'table' => text('Table name', 'config', hint: 'notes'),
+          'browser' => text('Sites it may visit', 'config', hint: 'example.com, shop.example (empty = any site)'),
+          'mcp' => text(
+            'Server',
+            'config',
+            hint: 'a saved MCP server’s name, https://…/mcp, or a command run in Ubuntu',
+          ),
           _ => text('Only URLs starting with', 'config', hint: 'https://api.example.com/  (empty = any)'),
         },
       ],

@@ -18,7 +18,11 @@ curl 'https://api.example.com/v1/users?limit=5' \
 ''');
       expect(r.method, 'POST');
       expect(r.url, 'https://api.example.com/v1/users?limit=5');
-      expect(r.headers, [('accept', 'application/json'), ('Authorization', 'Bearer abc123'), ('Content-Type', 'application/json')]);
+      expect(r.headers, [
+        ('accept', 'application/json'),
+        ('Authorization', 'Bearer abc123'),
+        ('Content-Type', 'application/json'),
+      ]);
       expect(r.body, '{\n  "name": "Ada",\n  "tags": [\n    "x"\n  ]\n}');
       expect(r.notes, isEmpty);
     });
@@ -83,7 +87,9 @@ curl 'https://api.example.com/v1/users?limit=5' \
 
     test('values, containers and search', () {
       final v = {
-        'a': {'b': [1, 2]},
+        'a': {
+          'b': [1, 2],
+        },
         'name': 'Ada',
       };
       expect(valueAt(v, ['a', 'b', 1]), 2);
@@ -111,12 +117,25 @@ curl 'https://api.example.com/v1/users?limit=5' \
 
   group('autocomplete', () {
     final sources = [
-      const DataSource(title: 'Input', root: r'$json', items: true, value: [
-        {'user': {'name': 'Ada', 'first name': 'A'}, 'id': 1},
-      ]),
-      const DataSource(title: 'Fetch', root: r'$node["Fetch"].json', items: true, value: [
-        {'status': 'ok', 'size': 2},
-      ]),
+      const DataSource(
+        title: 'Input',
+        root: r'$json',
+        items: true,
+        value: [
+          {
+            'user': {'name': 'Ada', 'first name': 'A'},
+            'id': 1,
+          },
+        ],
+      ),
+      const DataSource(
+        title: 'Fetch',
+        root: r'$node["Fetch"].json',
+        items: true,
+        value: [
+          {'status': 'ok', 'size': 2},
+        ],
+      ),
     ];
     ({String partial, List<String> keys})? at(String text) => completions(text, text.length, sources);
 

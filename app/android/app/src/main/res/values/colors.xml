@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Launcher icon and splash in light mode; values-night has the dark versions. -->
     <color name="ic_launcher_background">#2F7CF6</color>
+    <color name="ic_launcher_mark">#FFFFFF</color>
+    <color name="splash_mark">#2F7CF6</color>
 </resources>

@@ -16,7 +16,9 @@ enum TriggerMode {
   share,
   tile,
   rss,
-  email;
+  email,
+  mcp,
+  calendar;
 
   /// Unknown names (from a newer version) read as manual.
   static TriggerMode parse(String name) => values.asNameMap()[name] ?? manual;

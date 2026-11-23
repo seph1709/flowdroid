@@ -53,7 +53,11 @@ void main() {
   test('add, search, replace a source, list, delete — offline words', () async {
     final k = await kb();
     Map<String, Object?> add(String source, String text) => {
-      'op': 'add', 'collection': 'Home notes', 'embedder': 'local', 'chunkSize': 800, 'overlap': 100,
+      'op': 'add',
+      'collection': 'Home notes',
+      'embedder': 'local',
+      'chunkSize': 800,
+      'overlap': 100,
       'documents': [
         {'text': text, 'source': source},
       ],
@@ -65,7 +69,8 @@ void main() {
     });
     await k.call(add('trash', 'Trash goes out on Tuesday night.'));
     final r = await k.call({
-      'op': 'search', 'collection': 'Home notes',
+      'op': 'search',
+      'collection': 'Home notes',
       'queries': [
         {'query': 'wifi password', 'topK': 3, 'minScore': 0},
       ],
@@ -78,7 +83,8 @@ void main() {
     await k.call(add('wifi', 'The wifi password changed to correcthorse.'));
     expect((await k.sources('Home notes')).map((s) => s['source']), unorderedEquals(['wifi', 'trash']));
     final again = await k.call({
-      'op': 'search', 'collection': 'Home notes',
+      'op': 'search',
+      'collection': 'Home notes',
       'queries': [
         {'query': 'wifi password', 'topK': 3, 'minScore': 0},
       ],
@@ -89,7 +95,10 @@ void main() {
     expect(await k.deleteSource('Home notes', 'trash'), 1);
     await k.clear('Home notes');
     expect(await k.collections(), isEmpty);
-    expect((await k.call({'op': 'search', 'collection': 'Home notes', 'queries': []}))['error'], contains('no knowledge base'));
+    expect(
+      (await k.call({'op': 'search', 'collection': 'Home notes', 'queries': []}))['error'],
+      contains('no knowledge base'),
+    );
   });
 
   test('embeddings: stored with the collection, used for search, same kind enforced', () async {
@@ -103,7 +112,10 @@ void main() {
         jsonEncode({
           'data': [
             for (final (i, t) in input.indexed)
-              {'index': i, 'embedding': [t.contains('cat') ? 1.0 : 0.0, t.contains('dog') ? 1.0 : 0.0, 0.1]},
+              {
+                'index': i,
+                'embedding': [t.contains('cat') ? 1.0 : 0.0, t.contains('dog') ? 1.0 : 0.0, 0.1],
+              },
           ],
         }),
         200,
@@ -111,7 +123,12 @@ void main() {
     });
     final k = await kb(client);
     await k.call({
-      'op': 'add', 'collection': 'pets', 'embedder': 'openai', 'credential': 'oa', 'chunkSize': 800, 'overlap': 0,
+      'op': 'add',
+      'collection': 'pets',
+      'embedder': 'openai',
+      'credential': 'oa',
+      'chunkSize': 800,
+      'overlap': 0,
       'documents': [
         {'text': 'My cat sleeps all day.', 'source': 'cat'},
         {'text': 'The dog needs a walk.', 'source': 'dog'},
@@ -120,14 +137,19 @@ void main() {
     expect(sent.single['model'], 'text-embedding-3-small');
     // The search needs no credential: the knowledge base remembers it.
     final r = await k.call({
-      'op': 'search', 'collection': 'pets',
+      'op': 'search',
+      'collection': 'pets',
       'queries': [
         {'query': 'where is the cat?', 'topK': 1, 'minScore': 0},
       ],
     });
     expect(((((r['results']! as List).first as Map)['matches'] as List).single as Map)['source'], 'cat');
     final mixed = await k.call({
-      'op': 'add', 'collection': 'pets', 'embedder': 'local', 'chunkSize': 800, 'overlap': 0,
+      'op': 'add',
+      'collection': 'pets',
+      'embedder': 'local',
+      'chunkSize': 800,
+      'overlap': 0,
       'documents': [
         {'text': 'x', 'source': 'x'},
       ],

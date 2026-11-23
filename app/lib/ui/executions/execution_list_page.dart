@@ -70,6 +70,8 @@ String _modeLabel(TriggerMode mode) => switch (mode) {
   TriggerMode.manual => 'Manual run',
   TriggerMode.schedule => 'Scheduled',
   TriggerMode.webhook => 'Webhook',
+  TriggerMode.mcp => 'MCP tool call',
+  TriggerMode.calendar => 'Calendar event',
   TriggerMode.telegram => 'Telegram',
   TriggerMode.subworkflow => 'Called by a workflow',
   TriggerMode.error => 'Error workflow',
@@ -122,7 +124,7 @@ class _NoRuns extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconTile(icon: AppIcons.history, color: AppColors.of(context).textSecondary, size: 56),
+            GlyphIcon(icon: AppIcons.history, color: AppColors.of(context).textTertiary, size: 64),
             const SizedBox(height: Space.lg),
             Text('No runs yet', style: theme.textTheme.titleMedium),
             const SizedBox(height: Space.sm),

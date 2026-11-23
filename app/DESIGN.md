@@ -6,7 +6,7 @@ Direction: **Calm Clarity**, chosen 2026-11-21. FlowDroid should sit next to Thi
 
 - White space organizes; lines and boxes are a last resort. Prefer spacing and alignment over borders and cards.
 - One accent (blue) marks what can be pressed and what is running. Nothing decorative uses it.
-- Color elsewhere is a code: each node group has one soft tint (icon tiles only), and run states have green, amber and red.
+- Color elsewhere is a code: each node group has one color (its icons and its dot in the step list), and run states have green, amber and red.
 - Type does the hierarchy with few sizes and clear weight steps.
 - Every state is visible: idle, running, succeeded, failed, disabled, empty.
 
@@ -42,11 +42,13 @@ Inter (bundled, OFL) for everything; JetBrains Mono (bundled, OFL) for expressio
 | warning | #E8920C | #F2A93B |
 | danger | #E5484D | #FF6369 |
 
-Group tints (icon color on a 14% tint): trigger amber, flow violet, data teal, network blue, android green, AI pink, communication indigo, database cyan, productivity red-orange, system graphite.
+Group colors, drawn as the bare icon glyph with no tile behind it: trigger amber, flow violet, data teal, network blue, android green, AI pink, communication indigo, database cyan, productivity red-orange, system graphite. Each has a light and a lighter dark-mode value (`AppColors.groups`), so icons change with the theme, and switching themes fades every color. The home list shows trigger icons in the text color instead (dimmed when a workflow is off), since every row would be amber.
+
+The launcher icon and splash follow the phone's dark mode too: blue icon with a white mark in light mode, near-black with a blue mark in dark mode (`values-night/colors.xml`).
 
 ## Shape and depth
 
-Radii: 9 (icon tiles), 12 (buttons, inputs), 14 (nodes, groups), 20 (sheets, dialogs). Depth is a soft two-layer shadow on nodes and floating controls only; everything else is flat.
+Radii: 12 (buttons, inputs), 14 (nodes, groups), 20 (sheets, dialogs). Depth is a soft two-layer shadow on nodes and floating controls only; everything else is flat.
 
 ## Spacing
 
@@ -56,7 +58,7 @@ Radii: 9 (icon tiles), 12 (buttons, inputs), 14 (nodes, groups), 20 (sheets, dia
 
 - **Bars:** no elevation, background-colored, hairline only where content scrolls under.
 - **Bottom toolbar (editor):** icon buttons on the left, the blue Run pill on the right, all inside the bar.
-- **Lists:** flat rows with an icon tile, a headline and a grey caption; inset hairline separators.
+- **Lists:** flat rows with a bare icon, a headline and a grey caption; inset hairline separators. Step-picker groups start with a dot in the group's color.
 - **Status ring:** 22 px circle at the end of a node or run row: grey ring (idle), spinning blue arc (running), green ring with dot (succeeded), red ring with × (failed).
 - **Inputs:** filled grouped background, no outline until focused (accent 1.5 px), label above the field.
 - **Switches:** blue track when on, light grey when off, no outline.

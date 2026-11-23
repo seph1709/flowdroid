@@ -82,6 +82,21 @@ describe('AI chat', () => {
     );
     assert.equal(start(single('ai.chat', { provider: 'openai', credential: 'o', prompt: 'p' }))[1].error, 'Step: NodeError: model is required');
   });
+
+  it('asks the host to run Claude Code in Ubuntu, with no credential', () => {
+    const wf = single('ai.chat', { provider: 'claudeCode', system: 'Be brief.', prompt: 'Hi {{ $json.name }}', json: true, timeout: 300 });
+    const [json, s] = start(wf, [{ name: 'Ann' }]);
+    assert.equal(s.error, null);
+    assert.deepEqual(s.pending?.effect, {
+      type: 'cliChat',
+      agent: 'claudeCode',
+      chats: [{ prompt: 'Hi Ann', system: 'Be brief.\n\nReply with only valid JSON, no other text.', model: '', image: '', timeoutMs: 300000 }],
+    });
+    const done = resume(wf, json, { replies: [{ text: '{"hi":1}', model: 'claude-opus-5-5' }] });
+    assert.deepEqual(done.last['Step'], [{ text: '{"hi":1}', provider: 'claudeCode', model: 'claude-opus-5-5', json: { hi: 1 } }]);
+    assert.equal(resume(wf, json, { replies: [{ error: 'not signed in' }] }).error, 'Step: NodeError: Claude Code: not signed in');
+    assert.equal(resume(wf, json, { error: 'install Ubuntu first' }).error, 'Step: NodeError: install Ubuntu first');
+  });
 });
 
 describe('messaging', () => {

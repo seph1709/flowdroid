@@ -74,7 +74,7 @@ class NodeCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: Space.md),
                           child: Row(
                             children: [
-                              IconTile.forType(type: node.type, group: type?.group, size: 32),
+                              GlyphIcon.forType(type: node.type, group: type?.group, size: 30),
                               const SizedBox(width: Space.md),
                               Expanded(
                                 child: Column(

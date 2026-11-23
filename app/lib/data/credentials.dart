@@ -107,6 +107,33 @@ const credentialTypes = <CredentialType>[
     CredentialField('password', 'Password', secret: true),
   ], help: 'For HTTP Request: sends HTTP Basic authentication.'),
   CredentialType(
+    'webSession',
+    'Web session (browser login)',
+    [CredentialField('site', 'Site', hint: 'https://example.com')],
+    help:
+        'Log in to the site once in FlowDroid’s browser (button below). HTTP Request then sends that login’s cookies '
+        'to the site; they stay in the browser and never appear in the workflow or run history.',
+  ),
+  CredentialType(
+    'mcpServer',
+    'MCP server',
+    [
+      CredentialField('url', 'Server URL', optional: true, hint: 'https://example.com/mcp'),
+      CredentialField(
+        'command',
+        'Or a command (runs in Ubuntu)',
+        optional: true,
+        hint: 'npx -y @modelcontextprotocol/server-github',
+      ),
+      CredentialField('headerName', 'Sign-in header', optional: true, hint: 'Authorization'),
+      CredentialField('headerValue', 'Header value', secret: true, optional: true, hint: 'Bearer …'),
+      CredentialField('env', 'Environment for the command', secret: true, optional: true, hint: 'TOKEN=…; OTHER=…'),
+    ],
+    help:
+        'A server to pick by name in MCP Client, AI Agent tools and Claude Code. Give a URL for a server on the web, '
+        'or a command for one FlowDroid runs in Ubuntu. Keys stay in encrypted storage.',
+  ),
+  CredentialType(
     'oauth2',
     'OAuth2 (any service)',
     [

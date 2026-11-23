@@ -1,6 +1,6 @@
 {
   "schema": "rust-anything/bridge@1",
-  "root": "/home/joseph/Desktop/Maynite/joseph/n8n-android-flutter/engine-ts",
+  "root": "../../engine-ts",
   "unit": "src/api.ts",
   "language": "ts",
   "kind": "napi",

@@ -12,7 +12,10 @@ void main() {
   final items = [
     {
       'id': 7,
-      'user': {'name': 'Ada', 'tags': ['a', 'b']},
+      'user': {
+        'name': 'Ada',
+        'tags': ['a', 'b'],
+      },
     },
   ];
 

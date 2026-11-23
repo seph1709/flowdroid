@@ -22,4 +22,6 @@ android {
 dependencies {
     // FileProvider: opening and sharing files from workflows with other apps.
     implementation("androidx.core:core:1.13.1")
+    // Photo & Scan: Google's document scanner (edge detection, cleanup, PDF), run by Play services.
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
 }

@@ -213,6 +213,11 @@ class LinuxRuntime {
     return CommandOutput(stdout: cut(out), stderr: cut(err), exitCode: exitCode);
   }
 
+  /// Starts [command] in Ubuntu with its stdin, stdout and stderr open, for
+  /// programs the app talks to while they run (an MCP server over stdio).
+  /// The caller kills it when done.
+  Future<Process> startUbuntu(String command, {String workdir = ''}) => _startUbuntu(command, workdir);
+
   Future<Process> _startUbuntu(String command, String workdir) async {
     final launch = await _ubuntuLaunch(['/bin/bash', '-lc', command], workdir);
     return Process.start(

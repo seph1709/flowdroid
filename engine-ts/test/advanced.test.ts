@@ -224,6 +224,175 @@ describe('AI Agent', () => {
     const bad = single('ai.agent', { credential: 'c', prompt: 'x', tools: [{ kind: 'http', name: 'no spaces', config: '' }] });
     assert.equal(start(bad)[1].error, 'Step: NodeError: tool name "no spaces" must be 1–64 letters, digits, _ or -');
   });
+
+  it('hands the whole task to Claude Code in Ubuntu, with its tools and MCP servers', () => {
+    const wf = single('ai.agent', {
+      provider: 'claudeCode',
+      system: 'Be careful.',
+      prompt: 'Tidy {{ $json.dir }}',
+      access: 'editFiles',
+      webSearch: true,
+      mcpServers: '{"docs": {"type": "http", "url": "https://docs.example/mcp"}}',
+      session: '{{ $json.chat }}',
+      maxSteps: 5,
+      timeout: 60,
+      tools,
+    });
+    const [json, s] = start(wf, [{ dir: 'notes', chat: 42 }]);
+    assert.equal(s.error, null);
+    assert.deepEqual(s.pending!.effect, {
+      type: 'cliChat',
+      agent: 'claudeCode',
+      chats: [{
+        mode: 'agent',
+        prompt: 'Tidy notes',
+        system: 'Be careful.',
+        model: '',
+        image: '',
+        folder: '/root/files',
+        tools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'WebSearch', 'WebFetch', 'mcp__docs'],
+        mcpServers: { docs: { type: 'http', url: 'https://docs.example/mcp' } },
+        maxTurns: 5,
+        session: 'wf/Step/42',
+        timeoutMs: 300000,
+      }],
+    });
+    const reply = { text: 'Done.', model: 'claude-opus-5-5', sessionId: 'sess-1', steps: 3, stopReason: 'success', costUsd: 0.25 };
+    const [, done] = resume(wf, json, { replies: [reply] });
+    assert.equal(done.status, 'success');
+    assert.deepEqual(done.last['Step'], [
+      { text: 'Done.', steps: 3, stopReason: 'success', provider: 'claudeCode', model: 'claude-opus-5-5', sessionId: 'sess-1', costUsd: 0.25 },
+    ]);
+    assert.equal(resume(wf, json, { replies: [{ error: 'not signed in' }] })[1].error, 'Step: NodeError: Claude Code: not signed in');
+    assert.equal(resume(wf, json, { error: 'install Ubuntu first' })[1].error, 'Step: NodeError: install Ubuntu first');
+  });
+
+  it('finds an MCP server’s tools first, then lets Claude call them', () => {
+    const wf = single('ai.agent', {
+      credential: 'c',
+      prompt: 'Look up {{ $json.q }}',
+      tools: [tools[0], { kind: 'mcp', name: 'docs', description: '', config: 'Docs server' }],
+    });
+    let [json, s] = start(wf, [{ q: 'cats' }]);
+    assert.deepEqual(s.pending!.effect as unknown, { type: 'mcpList', servers: [{ name: 'docs', config: 'Docs server' }], timeoutMs: 120000 });
+
+    const schema = { type: 'object', properties: { q: { type: 'string' } } };
+    [json, s] = resume(wf, json, {
+      results: [{ tools: [{ name: 'search', description: 'Searches the docs', inputSchema: schema }, { name: 'get page' }, { name: '' }, 3] }],
+    });
+    const body = JSON.parse((s.pending!.effect['requests'] as Record<string, unknown>[])[0]!['body'] as string);
+    assert.deepEqual(body.tools.map((t: { name: string }) => t.name), ['weather', 'docs__search', 'docs__get_page']);
+    assert.deepEqual(body.tools[1], { name: 'docs__search', description: 'Searches the docs', input_schema: schema });
+    assert.deepEqual(body.tools[2].description, 'get page from the docs MCP server');
+    assert.deepEqual(body.tools[2].input_schema, { type: 'object', properties: {} });
+
+    const use = { type: 'tool_use', id: 'tu_9', name: 'docs__search', input: { q: 'cats' } };
+    [json, s] = resume(wf, json, ok({ content: [use], stop_reason: 'tool_use' }));
+    assert.deepEqual(s.pending!.effect as unknown, {
+      type: 'tools',
+      calls: [{ id: 'tu_9', kind: 'mcp', name: 'docs__search', config: 'Docs server', input: { q: 'cats' }, tool: 'search' }],
+    });
+    [json, s] = resume(wf, json, { results: [{ content: 'Cats are great', isError: false }] });
+    const again = JSON.parse((s.pending!.effect['requests'] as Record<string, unknown>[])[0]!['body'] as string);
+    assert.equal(again.tools.length, 3);
+    const [, done] = resume(wf, json, ok({ content: [{ type: 'text', text: 'Done' }], stop_reason: 'end_turn' }));
+    assert.deepEqual(done.last['Step'], [{ text: 'Done', steps: 2, stopReason: 'end_turn' }]);
+
+    assert.equal(resume(wf, start(wf)[0], { results: [{ error: 'offline' }] })[1].error, 'Step: NodeError: MCP tool docs: offline');
+    assert.equal(resume(wf, start(wf)[0], { results: [] })[1].error, 'Step: NodeError: expected 1 MCP tool lists');
+    assert.equal(resume(wf, start(wf)[0], { error: 'no network' })[1].error, 'Step: NodeError: no network');
+  });
+
+  it('checks Claude Code settings', () => {
+    const err = (params: object) => start(single('ai.agent', { provider: 'claudeCode', prompt: 'x', ...params }))[1].error;
+    assert.equal(err({ folder: 'files' }), 'Step: NodeError: folder must be a path in Ubuntu, starting with /');
+    assert.equal(err({ access: 'everything' }), 'Step: NodeError: unknown access everything');
+    assert.equal(err({ mcpServers: '[1]' }), 'Step: NodeError: MCP servers must be a JSON object of name: settings');
+    assert.equal(err({ mcpServers: { 'a b': {} } }), 'Step: NodeError: MCP server name "a b" must be 1–64 letters, digits, _ or -');
+    assert.equal(err({ prompt: '' }), 'Step: NodeError: prompt is empty');
+    assert.equal(err({ provider: 'gpt' }), 'Step: NodeError: unknown provider gpt');
+  });
+});
+
+describe('MCP Client', () => {
+  it('calls a tool on a web MCP server for each item', () => {
+    const wf = single('mcp.client', {
+      url: 'https://mcp.example/mcp',
+      credential: 'tok',
+      name: 'search',
+      arguments: '{"q": "{{ $json.q }}"}',
+    });
+    const [json, s] = start(wf, [{ q: 'cats' }, { q: 'dogs' }]);
+    assert.deepEqual(s.pending!.effect, {
+      type: 'mcp',
+      server: { transport: 'http', url: 'https://mcp.example/mcp', credential: 'tok' },
+      calls: [
+        { method: 'tools/call', params: { name: 'search', arguments: { q: 'cats' } } },
+        { method: 'tools/call', params: { name: 'search', arguments: { q: 'dogs' } } },
+      ],
+      timeoutMs: 60000,
+    });
+    const content = [{ type: 'text', text: 'found' }];
+    const [, done] = resume(wf, json, {
+      results: [{ result: { content } }, { result: { content, structuredContent: { n: 2 } } }],
+    });
+    assert.deepEqual(done.last['Step'], [{ text: 'found', content }, { text: 'found', content, json: { n: 2 } }]);
+    assert.equal(
+      resume(wf, json, { results: [{ result: { content: [{ type: 'text', text: 'no such repo' }], isError: true } }] })[1].error,
+      'Step: NodeError: the tool failed: no such repo',
+    );
+    assert.equal(resume(wf, json, { results: [{ error: 'unknown tool' }] })[1].error, 'Step: NodeError: MCP: unknown tool');
+    assert.equal(resume(wf, json, { error: 'could not reach the server' })[1].error, 'Step: NodeError: could not reach the server');
+  });
+
+  it('lists tools and reads resources from a stdio server in Ubuntu', () => {
+    const list = single('mcp.client', { transport: 'stdio', command: 'npx -y srv', operation: 'listTools', timeout: 0 });
+    const [json, s] = start(list);
+    assert.deepEqual(s.pending!.effect, {
+      type: 'mcp',
+      server: { transport: 'stdio', command: 'npx -y srv' },
+      calls: [{ method: 'tools/list', params: {} }],
+      timeoutMs: 1000,
+    });
+    const tools = [{ name: 'echo', inputSchema: { type: 'object' } }];
+    assert.deepEqual(resume(list, json, { results: [{ result: { tools } }] })[1].last['Step'], [{ tools }]);
+
+    const read = single('mcp.client', { transport: 'stdio', command: 'srv', operation: 'readResource', uri: 'file:///a.txt' });
+    const [rjson, rs] = start(read);
+    assert.deepEqual((rs.pending!.effect['calls'] as unknown[])[0], { method: 'resources/read', params: { uri: 'file:///a.txt' } });
+    const contents = [{ uri: 'file:///a.txt', text: 'hello' }];
+    assert.deepEqual(resume(read, rjson, { results: [{ result: { contents } }] })[1].last['Step'], [{ text: 'hello', contents }]);
+  });
+
+  it('uses a saved MCP server by name', () => {
+    const [, s] = start(single('mcp.client', { transport: 'saved', server: 'GitHub', operation: 'listTools' }));
+    assert.deepEqual(s.pending!.effect['server'], { transport: 'saved', credential: 'GitHub' });
+    assert.equal(
+      start(single('mcp.client', { transport: 'saved', operation: 'listTools' }))[1].error,
+      'Step: NodeError: choose a saved MCP server',
+    );
+  });
+
+  it('offers workflows as tools with the MCP Tool Trigger, which passes the arguments on', () => {
+    const wf = workflow([{ id: 't', name: 'Tool', type: 'trigger.mcp', params: { name: 'add_note' } }], []);
+    const json = startExecution(wf, 't', JSON.stringify([{ text: 'milk' }]), NOW);
+    const s = JSON.parse(json) as State;
+    assert.equal(s.status, 'success');
+    assert.deepEqual(s.last['Tool'], [{ text: 'milk' }]);
+    const spec = (JSON.parse(nodeCatalog()) as { type: string; params: { key: string }[] }[]).find((n) => n.type === 'trigger.mcp');
+    assert.deepEqual(spec?.params.map((p) => p.key), ['name', 'description', 'inputSchema', 'credential']);
+  });
+
+  it('checks its settings', () => {
+    const err = (params: object) => start(single('mcp.client', { url: 'https://x', name: 't', ...params }))[1].error;
+    assert.equal(err({ url: 'ftp://x' }), 'Step: NodeError: the server URL must start with http:// or https://');
+    assert.equal(err({ transport: 'stdio' }), 'Step: NodeError: command is empty');
+    assert.equal(err({ transport: 'ws' }), 'Step: NodeError: unknown transport ws');
+    assert.equal(err({ operation: 'nope' }), 'Step: NodeError: unknown operation nope');
+    assert.equal(err({ name: '' }), 'Step: NodeError: tool name is empty');
+    assert.equal(err({ arguments: '[1]' }), 'Step: NodeError: arguments must be a JSON object');
+    assert.equal(err({ operation: 'readResource' }), 'Step: NodeError: resource URI is empty');
+  });
 });
 
 describe('device, mail, feeds and files', () => {

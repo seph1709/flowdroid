@@ -1,9 +1,11 @@
 import { clone, getKey, setKey, type Obj } from '../../value.ts';
 import type { WorkflowNode } from '../workflow.ts';
 import { androidNodes } from './android.ts';
+import { phoneNodes } from './phone.ts';
 import { dataNodes } from './data.ts';
 import { flowNodes } from './flow.ts';
 import { httpNodes } from './http.ts';
+import { browserNodes } from './browser.ts';
 import type { NodeSpec } from './spec.ts';
 import { triggerNodes } from './triggers.ts';
 import { aiNodes } from './integrations/ai.ts';
@@ -17,6 +19,7 @@ import { emailNodes } from './integrations/email.ts';
 import { fileNodes } from './integrations/files.ts';
 import { codeNodes } from './code.ts';
 import { controlNodes } from './control.ts';
+import { mcpNodes } from './integrations/mcp.ts';
 
 export const NODE_SPECS: NodeSpec[] = [
   ...triggerNodes,
@@ -25,10 +28,13 @@ export const NODE_SPECS: NodeSpec[] = [
   ...dataNodes,
   ...codeNodes,
   ...httpNodes,
+  ...browserNodes,
   ...androidNodes,
+  ...phoneNodes,
   ...aiNodes,
   ...knowledgeNodes,
   ...agentNodes,
+  ...mcpNodes,
   ...messagingNodes,
   ...emailNodes,
   ...databaseNodes,

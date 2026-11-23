@@ -71,7 +71,13 @@ fn build_request(run: &NodeRun<'_>, index: usize) -> Result<Val> {
 }
 
 /// Credential types HTTP Request can authenticate with.
-pub const AUTH_CREDENTIALS: &[&str] = &["headerAuth", "bearerAuth", "basicAuth", "oauth2"];
+pub const AUTH_CREDENTIALS: &[&str] = &[
+    "headerAuth",
+    "bearerAuth",
+    "basicAuth",
+    "oauth2",
+    "webSession",
+];
 
 /// Text bodies are sent as is; structured ones as JSON, with a content type unless one is set.
 fn request_body(body: Val, headers: &mut Obj) -> Val {

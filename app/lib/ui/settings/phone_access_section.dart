@@ -7,7 +7,8 @@ import '../services_scope.dart';
 import '../theme.dart';
 import '../icons.dart';
 
-/// Permissions the phone triggers need: SMS, notification access, and location all the time.
+/// Permissions the phone steps and triggers need: SMS, notification access, location all the
+/// time, calendar, contacts, microphone and Do Not Disturb.
 class PhoneAccessSection extends StatefulWidget {
   const PhoneAccessSection({super.key});
 
@@ -47,6 +48,13 @@ class _PhoneAccessSectionState extends State<PhoneAccessSection> with WidgetsBin
         _location = location;
       });
     }
+  }
+
+  Future<void> _ask(String name) async {
+    final granted = await ServicesScope.of(context).phone.ensurePermissions([name]);
+    // Once refused for good, Android only lets the person allow it in the app's settings.
+    if (!granted) await Geolocator.openAppSettings();
+    await _refresh();
   }
 
   Future<void> _allowLocation() async {
@@ -104,6 +112,41 @@ class _PhoneAccessSectionState extends State<PhoneAccessSection> with WidgetsBin
                   : 'For the Place Trigger',
               _location == LocationPermission.always,
               _allowLocation,
+            ),
+            row(
+              AppIcons.calendar,
+              'Calendar',
+              access?.calendar ?? false
+                  ? 'Phone Calendar and the Calendar Event Trigger can work'
+                  : 'For Phone Calendar and the Calendar Event Trigger',
+              access?.calendar ?? false,
+              () => _ask('calendar'),
+            ),
+            row(
+              AppIcons.person,
+              'Contacts',
+              access?.contacts ?? false ? 'The Contacts step can find and add contacts' : 'For the Contacts step',
+              access?.contacts ?? false,
+              () => _ask('contacts'),
+            ),
+            row(
+              AppIcons.mic,
+              'Microphone',
+              access?.microphone ?? false
+                  ? 'Speech to Text can listen in the background'
+                  : 'For Speech to Text while FlowDroid is in the background',
+              access?.microphone ?? false,
+              () => _ask('microphone'),
+            ),
+            row(
+              AppIcons.bellOff,
+              'Do Not Disturb',
+              access?.dnd ?? false
+                  ? 'Sound Mode can turn on silence and Do Not Disturb'
+                  : 'For Sound Mode’s silent and Do Not Disturb settings',
+              access?.dnd ?? false,
+              phone.openDndAccess,
+              fix: 'Open',
             ),
           ],
         ),

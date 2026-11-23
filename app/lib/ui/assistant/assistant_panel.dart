@@ -207,7 +207,7 @@ class _Header extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(Space.page, 0, Space.sm, Space.xs),
         child: Row(
           children: [
-            const IconTile(icon: AppIcons.sparkle, size: 36),
+            GlyphIcon(icon: AppIcons.sparkle, color: AppColors.of(context).accent, size: 32),
             const SizedBox(width: Space.md),
             Expanded(
               child: Column(

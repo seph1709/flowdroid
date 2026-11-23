@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/json.dart';
 import '../../data/credentials.dart';
 import '../../runtime/google_auth.dart';
 import '../kit/kit.dart';
@@ -84,6 +85,26 @@ class _CredentialEditPageState extends State<CredentialEditPage> {
     final credential = Credential(name: name, type: _type.id, values: _values);
     await store.save(credential, replacing: widget.existing?.name);
     if (mounted) Navigator.of(context).pop(credential);
+  }
+
+  /// Logs in to the Web session's site in FlowDroid's browser.
+  Future<void> _logInBrowser() async {
+    var site = _values['site'] ?? '';
+    if (site.isEmpty) {
+      setState(() => _error = 'Fill in the site first');
+      return;
+    }
+    if (!site.startsWith('http://') && !site.startsWith('https://')) site = 'https://$site';
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final r = asMap(await ServicesScope.of(context).phone.browserLogin(site));
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (r['error'] case final String error) _error = error;
+    });
   }
 
   Future<void> _signInGoogle() async {
@@ -187,6 +208,14 @@ class _CredentialEditPageState extends State<CredentialEditPage> {
               onPressed: _busy ? null : _signInGoogle,
               icon: const Icon(AppIcons.enter),
               label: Text(_googleAccount == null ? 'Sign in with Google' : 'Signed in as $_googleAccount'),
+            ),
+          ],
+          if (_type.id == 'webSession') ...[
+            const SizedBox(height: Space.lg),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _logInBrowser,
+              icon: const Icon(AppIcons.browser),
+              label: Text(_busy ? 'Waiting for you to tap Done…' : 'Log in in FlowDroid’s browser'),
             ),
           ],
           if (_error != null) ...[

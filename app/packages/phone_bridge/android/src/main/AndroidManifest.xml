@@ -10,6 +10,17 @@
     <!-- Optional ("Display over other apps"): lets Open URL work while FlowDroid is in the background. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Phone Calendar, Calendar Event Trigger, Contacts and Speech to Text; asked for when first used. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Sound Mode: Do Not Disturb, granted by the person in Android settings. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY"/>
+    <!-- Alarm & Timer, through the phone's clock app. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
+    <!-- No CAMERA permission on purpose: declaring it would stop the camera app from taking photos for FlowDroid. -->
 
     <!-- The app picker (Notification Trigger) lists apps that have a launcher icon. -->
     <queries>
@@ -20,6 +31,21 @@
         <intent>
             <action android:name="android.intent.action.PICK"/>
             <data android:mimeType="vnd.android.cursor.dir/phone_v2"/>
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_TIMER"/>
         </intent>
     </queries>
 
@@ -34,6 +60,14 @@
         </receiver>
 
         <receiver android:name=".WakeAlarm" android:exported="false"/>
+        <receiver android:name=".AskActions$AskReceiver" android:exported="false"/>
+        <!-- The in-app browser on screen: watching a Browser step, or logging in to a site. -->
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:label="Browser"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"/>
 
         <provider
             android:name="androidx.core.content.FileProvider"

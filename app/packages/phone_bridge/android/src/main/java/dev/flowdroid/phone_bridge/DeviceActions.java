@@ -65,15 +65,27 @@ final class DeviceActions {
      * Returns {opened: true} or {notified: true}, or {error}.
      */
     static Map<String, Object> openUrl(Context context, String url) {
+        Map<String, Object> out = startOrNotify(
+            context, new Intent(Intent.ACTION_VIEW, Uri.parse(url)), "Tap to open", url);
+        if ("no app handles this".equals(out.get("error"))) out.put("error", "no app can open " + url);
+        return out;
+    }
+
+    /**
+     * Starts [intent] when Android allows it (FlowDroid on screen, or allowed to
+     * "display over other apps"); otherwise posts a notification that starts it on tap.
+     * Returns {opened: true} or {notified: true}, or {error}.
+     */
+    static Map<String, Object> startOrNotify(Context context, Intent intent, String title, String text) {
         Map<String, Object> out = new HashMap<>();
-        Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (onScreen() || Settings.canDrawOverlays(context)) {
             try {
-                context.startActivity(view);
+                context.startActivity(intent);
                 out.put("opened", true);
                 return out;
             } catch (android.content.ActivityNotFoundException e) {
-                out.put("error", "no app can open " + url);
+                out.put("error", "no app handles this");
                 return out;
             } catch (RuntimeException e) {
                 // Blocked after all: fall back to the notification.
@@ -81,7 +93,7 @@ final class DeviceActions {
         }
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null || !nm.areNotificationsEnabled()) {
-            out.put("error", "Android doesn't let apps in the background open links, and notifications are off");
+            out.put("error", "Android doesn't let apps in the background open other apps, and notifications are off");
             return out;
         }
         if (Build.VERSION.SDK_INT >= 26) {
@@ -89,14 +101,14 @@ final class DeviceActions {
                 LINKS_CHANNEL, "Links from workflows", NotificationManager.IMPORTANCE_HIGH));
         }
         PendingIntent tap = PendingIntent.getActivity(
-            context, nextLinkId, view, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            context, nextLinkId, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         int icon = context.getResources().getIdentifier("ic_stat_flow", "drawable", context.getPackageName());
         android.app.Notification.Builder b = Build.VERSION.SDK_INT >= 26
             ? new android.app.Notification.Builder(context, LINKS_CHANNEL)
             : new android.app.Notification.Builder(context);
         b.setSmallIcon(icon != 0 ? icon : context.getApplicationInfo().icon)
-            .setContentTitle("Tap to open")
-            .setContentText(url)
+            .setContentTitle(title)
+            .setContentText(text)
             .setContentIntent(tap)
             .setAutoCancel(true);
         nm.notify(nextLinkId++, b.build());

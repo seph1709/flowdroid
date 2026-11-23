@@ -320,4 +320,31 @@ abstract final class AppIcons {
 
   /// Drive.
   static const cloud = IconData(0xE068, fontFamily: _family);
+
+  /// Speech to text.
+  static const mic = IconData(0xE069, fontFamily: _family);
+
+  /// Photo.
+  static const camera = IconData(0xE06A, fontFamily: _family);
+
+  /// Contacts.
+  static const person = IconData(0xE06B, fontFamily: _family);
+
+  /// Document scan.
+  static const scan = IconData(0xE06C, fontFamily: _family);
+
+  /// Ask Me.
+  static const ask = IconData(0xE06D, fontFamily: _family);
+
+  /// Alarm and timer.
+  static const timer = IconData(0xE06E, fontFamily: _family);
+
+  /// Calendar event trigger.
+  static const calendarDot = IconData(0xE06F, fontFamily: _family);
+
+  /// Sound mode.
+  static const bellOff = IconData(0xE070, fontFamily: _family);
+
+  /// Browser.
+  static const browser = IconData(0xE071, fontFamily: _family);
 }

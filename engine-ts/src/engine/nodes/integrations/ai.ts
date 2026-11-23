@@ -4,11 +4,15 @@ import { fail } from '../../../errors.ts';
 import { parseJson } from '../../../json.ts';
 import { getKey, isObj, toNum, type Obj, type Val } from '../../../value.ts';
 import type { Item } from '../../context.ts';
-import { paramText, paramValue, type NodeRun, type NodeSpec } from '../spec.ts';
+import { itemsOf, paramText, paramValue, type NodeRun, type NodeSpec } from '../spec.ts';
 import { apiRequest, apiResume, credentialParam, enc, perItem } from './api.ts';
 import { fileMarker, filePath, mimeFromPath } from '../file_refs.ts';
 
-const PROVIDERS = ['anthropic', 'openai', 'gemini', 'openaiCompatible'];
+/** Providers reached over their HTTP API with a stored credential. */
+const API_PROVIDERS = ['anthropic', 'openai', 'gemini', 'openaiCompatible'];
+/** Claude Code in FlowDroid's Ubuntu, signed in with the person's own account; no credential. */
+const CLAUDE_CODE = 'claudeCode';
+const PROVIDERS = [...API_PROVIDERS, CLAUDE_CODE];
 
 /** Claude's default model; other providers name their model explicitly. */
 export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5-5';
@@ -25,6 +29,8 @@ function model(run: NodeRun, index: number, p: string): string {
   const m = paramText(run, 'model', index);
   if (m !== '') return m;
   if (p === 'anthropic') return DEFAULT_CLAUDE_MODEL;
+  // Claude Code picks its own default model.
+  if (p === CLAUDE_CODE) return '';
   return fail('NodeError', 'model is required');
 }
 
@@ -42,6 +48,46 @@ function buildChat(run: NodeRun, index: number): Obj {
   // The host puts the image's bytes where the marker is before sending.
   if (image !== '') request['inlineFiles'] = true;
   return request;
+}
+
+/** One prompt for Claude Code; the host runs it in Ubuntu and returns the reply. */
+function buildCliChat(run: NodeRun, index: number): Obj {
+  const prompt = paramText(run, 'prompt', index);
+  if (prompt === '') fail('NodeError', 'prompt is empty');
+  const wantsJson = getKey(run.params, 'json') === true;
+  const system = [paramText(run, 'system', index), wantsJson ? JSON_INSTRUCTION : ''].filter((s) => s !== '').join('\n\n');
+  const timeout = toNum(paramValue(run, 'timeout', index));
+  const image = filePath(run, 'image', index);
+  if (image !== '' && !mimeFromPath(image).startsWith('image/')) fail('NodeError', `${image} is not an image`);
+  return { prompt, system, model: paramText(run, 'model', index), image, timeoutMs: (timeout >= 1 ? timeout : 1) * 1000 };
+}
+
+function runChat(run: NodeRun): { effect: Obj } {
+  if (provider(run) !== CLAUDE_CODE) return perItem(run, (i) => buildChat(run, i));
+  const chats = itemsOf(run).map((_, i) => buildCliChat(run, i));
+  return { effect: { type: 'cliChat', agent: CLAUDE_CODE, chats } };
+}
+
+/** Claude Code's replies, one per chat: `{text, model}` or `{error}`. */
+function resumeCliChat(run: NodeRun, result: Obj): Item[][] {
+  const error = getKey(result, 'error');
+  if (typeof error === 'string') fail('NodeError', error);
+  const replies = getKey(result, 'replies');
+  if (!Array.isArray(replies)) fail('NodeError', 'Claude Code returned no reply');
+  return [replies.flatMap((reply, i) => {
+    if (!isObj(reply)) return fail('NodeError', 'Claude Code returned no reply');
+    const failed = getKey(reply, 'error');
+    if (typeof failed === 'string') fail('NodeError', `Claude Code: ${failed}`);
+    const text = getKey(reply, 'text');
+    const used = getKey(reply, 'model');
+    return withJson(run, { text: typeof text === 'string' ? text : '', provider: CLAUDE_CODE, model: typeof used === 'string' ? used : paramText(run, 'model', i) });
+  })];
+}
+
+const resumeApi = apiResume('AI', toItem);
+
+function resumeChat(run: NodeRun, result: Obj): Item[][] {
+  return provider(run) === CLAUDE_CODE ? resumeCliChat(run, result) : resumeApi(run, result);
 }
 
 function buildChatRequest(
@@ -159,10 +205,14 @@ function replyText(p: string, body: Val): string {
 function toItem(body: Val, index: number, run: NodeRun): Item[] {
   const p = provider(run);
   const text = replyText(p, body);
-  const item: Item = { text, provider: p, model: model(run, index, p) };
+  return withJson(run, { text, provider: p, model: model(run, index, p) });
+}
+
+/** [item], with its text parsed into `json` when the node asks for a JSON reply. */
+function withJson(run: NodeRun, item: Item): Item[] {
   if (getKey(run.params, 'json') === true) {
     try {
-      item['json'] = parseJson(text, 'reply');
+      item['json'] = parseJson(item['text'] as string, 'reply');
     } catch {
       fail('NodeError', 'the reply is not valid JSON');
     }
@@ -180,15 +230,15 @@ export const aiNodes: NodeSpec[] = [
     outputs: ['main'],
     params: [
       { key: 'provider', label: 'Provider', kind: 'select', default: 'anthropic', options: PROVIDERS },
-      credentialParam(PROVIDERS),
-      { key: 'model', label: 'Model', kind: 'text', default: '', hint: `empty = ${DEFAULT_CLAUDE_MODEL} for Claude` },
+      credentialParam(API_PROVIDERS),
+      { key: 'model', label: 'Model', kind: 'text', default: '', hint: `empty = ${DEFAULT_CLAUDE_MODEL} for Claude, Claude Code's own default for Claude Code` },
       { key: 'system', label: 'Instructions', kind: 'text', default: '' },
       { key: 'prompt', label: 'Prompt', kind: 'text', default: '{{ $json.text }}' },
       { key: 'image', label: 'Image', kind: 'text', default: '', hint: 'a photo for the AI to look at, e.g. {{ $json.file.path }}' },
       { key: 'json', label: 'Reply as JSON', kind: 'boolean', default: false },
       { key: 'timeout', label: 'Timeout (seconds)', kind: 'number', default: 120 },
     ],
-    run: (run) => perItem(run, (i) => buildChat(run, i)),
-    resume: apiResume('AI', toItem),
+    run: runChat,
+    resume: resumeChat,
   },
 ];

@@ -124,6 +124,8 @@ const modelSuggestions = <String, List<String>>{
   'openai': ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4o-mini'],
   'gemini': ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
   'openaiCompatible': ['llama3.2', 'qwen2.5', 'mistral', 'deepseek-r1'],
+  // Claude Code's aliases; empty uses its own default.
+  'claudeCode': ['sonnet', 'opus', 'haiku'],
 };
 
 /// `2026-11-22T09:00:00+08:00`: what Google Calendar expects, in the phone's time zone.
