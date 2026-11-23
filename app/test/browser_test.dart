@@ -37,10 +37,11 @@ class _FakePage implements BrowserPage {
     if (call.startsWith('fd.click("text=\\"Next\\"")')) url = 'https://shop.example/page2';
     if (call.startsWith('fd.click("3")')) url = 'https://evil.example/';
     if (call.startsWith('fd.present')) return jsonEncode({'value': true});
-    if (call.startsWith('fd.extract(".price", true'))
+    if (call.startsWith('fd.extract(".price", true')) {
       return jsonEncode({
         'value': ['9', '12'],
       });
+    }
     if (call.startsWith('fd.extract')) return jsonEncode({'value': 'Cheap shoes'});
     if (call.startsWith('fd.snapshot')) {
       return jsonEncode({

@@ -42,6 +42,9 @@ class WebhookServer {
 
   bool get isRunning => _server != null;
 
+  /// The port it listens on: [port], or the free one the system chose when [port] is 0 (tests).
+  int get boundPort => _server?.port ?? port;
+
   Future<void> start() async {
     if (_server != null) return;
     final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
