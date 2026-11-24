@@ -32,6 +32,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned so `dart format` in CI matches what developers run.
+          flutter-version: 3.50.1
 
       - run: make ts-test core-lint core-test
       - name: Prove the Rust port matches the TypeScript reference
@@ -58,6 +60,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned so `dart format` in CI matches what developers run.
+          flutter-version: 3.50.1
       - run: make apk
       - uses: actions/upload-artifact@v4
         with:
