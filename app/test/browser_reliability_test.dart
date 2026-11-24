@@ -32,7 +32,7 @@ class _FlakyPage implements BrowserPage {
     if (call.startsWith('fd.state()')) {
       return jsonEncode({'ready': 'complete', 'url': 'https://site.example/login', 'title': 'Site', 'mutations': 0});
     }
-    if (call.startsWith('fd.present')) return jsonEncode({'value': lateBy-- <= 0});
+    if (call.startsWith('fd.present') || call.startsWith('fd.actionable')) return jsonEncode({'value': lateBy-- <= 0});
     if (call.startsWith('fd.loginWall')) return jsonEncode({'value': loginForm});
     if (call.startsWith('fd.click')) {
       clicks.add(call);
@@ -58,6 +58,9 @@ class _FlakyPage implements BrowserPage {
 
   @override
   Future<void> hide(String session) async {}
+
+  @override
+  Future<void> finished(String session) async {}
 }
 
 void main() {
@@ -75,13 +78,14 @@ void main() {
     );
   });
 
-  Future<JsonMap> run(String steps) async =>
-      asMapList((await driver({
-        'runs': [
-          {'url': 'https://site.example/', 'steps': steps},
-        ],
-        'timeoutMs': 20000,
-      }))['results']).single;
+  Future<JsonMap> run(String steps) async => asMapList(
+    (await driver({
+      'runs': [
+        {'url': 'https://site.example/', 'steps': steps},
+      ],
+      'timeoutMs': 20000,
+    }))['results'],
+  ).single;
 
   test('waits for content that appears late instead of failing', () async {
     page.lateBy = 5;
@@ -110,12 +114,14 @@ void main() {
     page
       ..lateBy = 1000
       ..loginForm = true;
-    final r = asMapList((await driver({
-      'runs': [
-        {'url': 'https://site.example/', 'steps': 'click #go'},
-      ],
-      'timeoutMs': 20000,
-    }))['results']).single;
+    final r = asMapList(
+      (await driver({
+        'runs': [
+          {'url': 'https://site.example/', 'steps': 'click #go'},
+        ],
+        'timeoutMs': 20000,
+      }))['results'],
+    ).single;
     expect(r['error'], contains('logged out of site.example'));
   });
 

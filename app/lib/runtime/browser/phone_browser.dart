@@ -27,4 +27,7 @@ class PhoneBrowser implements BrowserPage {
 
   @override
   Future<void> hide(String session) => phone.browserHide(session);
+
+  @override
+  Future<void> finished(String session) => phone.browserFinished(session);
 }

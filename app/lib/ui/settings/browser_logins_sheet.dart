@@ -132,7 +132,10 @@ class _BrowserLoginsSheetState extends State<BrowserLoginsSheet> {
               child: Text(_message!, style: theme.textTheme.bodySmall?.copyWith(color: c.textSecondary)),
             ),
           if (list == null)
-            const Padding(padding: EdgeInsets.all(Space.xl), child: Center(child: QuietSpinner()))
+            const Padding(
+              padding: EdgeInsets.all(Space.xl),
+              child: Center(child: QuietSpinner()),
+            )
           else if (list.isNotEmpty) ...[
             const SectionLabel('LOGGED IN'),
             GroupedSection(

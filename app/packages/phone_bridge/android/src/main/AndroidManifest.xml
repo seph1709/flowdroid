@@ -66,7 +66,7 @@
             android:name=".BrowserActivity"
             android:exported="false"
             android:label="Browser"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|density|uiMode"
             android:theme="@android:style/Theme.Material.Light.NoActionBar"/>
 
         <provider

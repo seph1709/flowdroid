@@ -77,9 +77,7 @@ void main() {
 
 class _NeverEffects extends EffectDispatcher {
   @override
-  Map<String, Future<JsonMap> Function(JsonMap effect)> get handlers => {
-    'vibrate': (_) => Completer<JsonMap>().future,
-  };
+  Map<String, Future<JsonMap> Function(JsonMap effect)> get handlers => {'vibrate': (_) => Completer<JsonMap>().future};
 }
 
 void cancelTests() {

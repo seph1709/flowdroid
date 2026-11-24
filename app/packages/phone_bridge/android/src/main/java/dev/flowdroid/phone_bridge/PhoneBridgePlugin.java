@@ -220,13 +220,20 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
                 BrowserActivity.closeFor(call.argument("session"));
                 result.success(null);
                 break;
+            case "browserFinished":
+                BrowserActivity.status(call.argument("session"), false);
+                result.success(null);
+                break;
             case "browserClose":
                 Browser.close(call.argument("session"));
                 result.success(null);
                 break;
             case "browserLogin": {
                 String session = "login";
+                // A login screen already open is replaced: answer its caller now, or it waits forever.
+                java.util.function.Consumer<String> previous = BrowserActivity.takeDone(session);
                 Browser.close(session);
+                if (previous != null) previous.accept("");
                 try {
                     Browser.session(context, session, false).web.loadUrl(call.argument("url"));
                 } catch (RuntimeException e) {
@@ -562,6 +569,12 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
         if (!DeviceActions.onScreen() && !Settings.canDrawOverlays(context)) {
             return Browser.error("showing the browser needs FlowDroid on screen");
         }
+        if (!login && BrowserActivity.isOpen(session)) {
+            // Already on screen (left up by the last run): reuse it, no new window sliding in.
+            BrowserActivity.status(session, true);
+            return new HashMap<>();
+        }
+        BrowserActivity.opening(session);
         context.startActivity(new Intent(context, BrowserActivity.class)
             .putExtra(BrowserActivity.EXTRA_SESSION, session)
             .putExtra(BrowserActivity.EXTRA_LOGIN, login)

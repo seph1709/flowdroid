@@ -42,8 +42,7 @@ class BrowserLogins {
     }
   }
 
-  Future<void> _save(List<SavedLogin> all) =>
-      _file.writeAsString(jsonEncode(all.map((l) => l.toJson()).toList()));
+  Future<void> _save(List<SavedLogin> all) => _file.writeAsString(jsonEncode(all.map((l) => l.toJson()).toList()));
 
   /// Shows [url] for the person to log in; `{url}` once they tap Done, or `{error}`.
   Future<JsonMap> logIn(String url) async {

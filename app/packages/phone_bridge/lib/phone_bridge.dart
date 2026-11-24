@@ -216,6 +216,9 @@ class PhoneBridge {
 
   Future<Object?> browserHide(String session) => _call('browserHide', {'session': session});
 
+  /// Marks the page on screen as finished: it stays up until the person closes it.
+  Future<Object?> browserFinished(String session) => _call('browserFinished', {'session': session});
+
   Future<Object?> browserClose(String session) => _call('browserClose', {'session': session});
 
   /// Opens [url] on screen to log in; `{url}` once the person taps Done, or `{error}`.
