@@ -15,46 +15,41 @@ for something to happen. The steps after it do things.
 
 ## What it can do
 
-- **Start on:** a schedule, a text, a notification, a place, a calendar event, a web request, a shared file
-- **Phone:** notifications, speech, alarms, contacts, camera, location, sound mode
-- **Services:** any web API, Telegram, Discord, email, Google, Notion, Airtable, Supabase
-- **AI:** Claude, OpenAI, Gemini or a local model, plus your own searchable notes
-- **Websites:** a built-in browser that clicks, types and reads pages for you
-- **Code:** JavaScript, Python, shell commands and a full Ubuntu inside the app
+- Start on a schedule, a text, a notification, a place or a shared file
+- Use your phone: notifications, speech, alarms, contacts, camera, location
+- Talk to apps like Telegram, Gmail, Google Sheets and Notion
+- Ask AI like Claude, ChatGPT or Gemini
+- Click and read websites for you
 
-A built-in assistant can also build the workflow for you from a plain description.
-
-Full list: [docs/features.md](docs/features.md)
+Not sure how to build something? Describe it, and the built-in assistant
+builds it for you.
 
 ## Why on the phone
 
-- **Private.** Your data and passwords stay on the device.
-- **Free.** Nothing to host or pay for.
-- **Closer.** It can read texts, know where you are and buzz your pocket.
-- **Always on.** It keeps running in the background and after restarts.
+- Your data and passwords stay on your device.
+- Nothing to host or pay for.
+- It can do things a server can't, like read your texts or know where you are.
+- It keeps running in the background, even after a restart.
 
 ## Get started
 
-Build the APK and install it on your phone:
+1. Install the app on your Android phone.
+2. Tap **New workflow**, or start from a template.
+3. Add your steps and tap **Run** to try it.
+4. Switch it on, and it runs by itself.
 
-```sh
-make apk
-```
-
-Then tap **New workflow**, add steps, tap **Run** to test, and switch it on.
-
-Build tools and details: [docs/development.md](docs/development.md)
+FlowDroid isn't on the Play Store yet. To build it yourself, see the
+[developer guide](docs/development.md).
 
 ## Good to know
 
 - Android only.
-- Early software, so back up your workflows.
-- Some phone brands stop background apps. The app shows how to prevent it.
-- Give webhooks a key and turn them off on public Wi-Fi.
+- Still early, so back up your workflows.
+- Some phones stop apps in the background. The app shows you how to prevent it.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately as described in [SECURITY.md](SECURITY.md).
+Ideas and bug reports are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
