@@ -202,23 +202,29 @@ class WorkflowTools {
           'the page: title, address, numbered elements each with a stable "target" to use in Browser step scripts, '
           'and the page text. Use it instead of asking the person for selectors. Look and navigate; do not submit, '
           'buy, send or delete anything unless the person asked for exactly that.',
-      _object({
-        'action': {
-          'type': 'string',
-          'enum': ['open', 'read', 'click', 'type', 'press', 'scroll', 'back'],
+      _object(
+        {
+          'action': {
+            'type': 'string',
+            'enum': ['open', 'read', 'click', 'type', 'press', 'scroll', 'back'],
+          },
+          'url': {'type': 'string', 'description': 'For open: the full address.'},
+          'target': {'type': 'string', 'description': 'An element number from the last view, or a target it gave.'},
+          'text': {'type': 'string', 'description': 'For type: the text. For press: a key such as Enter.'},
         },
-        'url': {'type': 'string', 'description': 'For open: the full address.'},
-        'target': {'type': 'string', 'description': 'An element number from the last view, or a target it gave.'},
-        'text': {'type': 'string', 'description': 'For type: the text. For press: a key such as Enter.'},
-      }, ['action']),
+        ['action'],
+      ),
     ),
     ToolSpec(
       'log_in_to_site',
       'Opens a site on screen so the person logs in themselves (you never see or type their password), then '
           'keeps that login for every automation until the site ends it. Use it when browse lands on a login page.',
-      _object({
-        'url': {'type': 'string', 'description': 'The site’s login page or home page.'},
-      }, ['url']),
+      _object(
+        {
+          'url': {'type': 'string', 'description': 'The site’s login page or home page.'},
+        },
+        ['url'],
+      ),
     ),
     ToolSpec(
       'get_last_run',
@@ -524,18 +530,19 @@ class WorkflowTools {
     if (browser == null) throw const ToolInputError('the browser is not available here');
     final action = asString(input['action']);
     try {
-      final view = await browser
-          .agent(input, '', session: 'assistant-${_wf.id}')
-          .timeout(const Duration(seconds: 60));
+      final view = await browser.agent(input, '', session: 'assistant-${_wf.id}').timeout(const Duration(seconds: 60));
       final url = RegExp(r'^URL: (.*)$', multiLine: true).firstMatch(view)?.group(1) ?? '';
       final host = Uri.tryParse(url)?.host ?? '';
-      return ToolOutcome(_cut(view), summary: switch (action) {
-        'open' => 'Opened $host',
-        'read' => 'Looked at $host',
-        'click' => 'Clicked on $host',
-        'type' => 'Typed on $host',
-        _ => 'Browsed $host',
-      });
+      return ToolOutcome(
+        _cut(view),
+        summary: switch (action) {
+          'open' => 'Opened $host',
+          'read' => 'Looked at $host',
+          'click' => 'Clicked on $host',
+          'type' => 'Typed on $host',
+          _ => 'Browsed $host',
+        },
+      );
     } on BrowserException catch (e) {
       throw ToolInputError('browser: ${e.message}');
     } on TimeoutException {

@@ -21,6 +21,9 @@ abstract interface class BrowserPage {
   Future<JsonMap> show(String session);
 
   Future<void> hide(String session);
+
+  /// The run on screen is over: the page stays up, marked finished, until the person closes it.
+  Future<void> finished(String session);
 }
 
 /// Something wrong with a step: its message ends up as the node's error.
@@ -81,7 +84,9 @@ class BrowserDriver {
 
   /// Sessions are per driver: the app on screen and the background service each
   /// have one, so a run in one never takes over the other's page.
-  final _tag = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+  /// The clock alone is not enough: two drivers made within one clock tick would share it.
+  final _tag = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_made++}';
+  static int _made = 0;
 
   /// The session Browser steps share (kept warm between runs); one run at a time.
   String get runSession => 'run-$_tag';
@@ -137,16 +142,27 @@ class BrowserDriver {
   }) async {
     final progress = BrowserProgress();
     try {
-      return await runScript(url, script, visible: visible, fast: fast, timeoutMs: timeoutMs, progress: progress)
-          .timeout(Duration(milliseconds: timeoutMs));
+      return await runScript(
+        url,
+        script,
+        visible: visible,
+        fast: fast,
+        timeoutMs: timeoutMs,
+        progress: progress,
+      ).timeout(Duration(milliseconds: timeoutMs));
     } on BrowserException catch (e) {
       if (progress.acted || !isRetryable(e.message)) rethrow;
     } on TimeoutException {
       if (progress.acted) rethrow;
     }
     await Future<void>.delayed(const Duration(seconds: 1));
-    return runScript(url, script, visible: visible, fast: fast, timeoutMs: timeoutMs)
-        .timeout(Duration(milliseconds: timeoutMs));
+    return runScript(
+      url,
+      script,
+      visible: visible,
+      fast: fast,
+      timeoutMs: timeoutMs,
+    ).timeout(Duration(milliseconds: timeoutMs));
   }
 
   /// Failures that a fresh try can fix: a crashed or closed browser, or a network blip.
@@ -167,6 +183,8 @@ class BrowserDriver {
     final s = runSession;
     final waitMs = timeoutMs < elementWaitMs ? timeoutMs : elementWaitMs;
     Future<void> appear(String target) => _appear(s, target, waitMs);
+    // Clicking and typing also wait for the element to be enabled.
+    Future<void> ready(String target) => _appear(s, target, waitMs, check: 'actionable');
     final data = <String, Object?>{};
     final screenshots = <JsonMap>[];
     await _open(s, url, fast: fast, timeoutMs: timeoutMs);
@@ -181,18 +199,18 @@ class BrowserDriver {
             await _open(s, c.target, fast: fast, timeoutMs: timeoutMs);
             await settle(s);
           case 'click':
-            await appear(c.target);
+            await ready(c.target);
             progress?.acted = true;
             _check(await _act(s, 'fd.click(${_js(c.target)})'), failAt);
-            await settle(s);
+            await settle(s, maxMs: _actionSettleMs);
           case 'type':
-            await appear(c.target);
+            await ready(c.target);
             progress?.acted = true;
             _check(await _act(s, 'fd.type(${_js(c.target)}, ${_js(c.text)})'), failAt);
           case 'press':
             progress?.acted = true;
             _check(await _act(s, 'fd.press(${_js(c.target)})'), failAt);
-            await settle(s);
+            await settle(s, maxMs: _actionSettleMs);
           case 'wait':
             if (c.target.isEmpty) {
               await Future<void>.delayed(Duration(milliseconds: (double.parse(c.text) * 1000).round()));
@@ -208,7 +226,7 @@ class BrowserDriver {
             _check(await _act(s, 'fd.scroll(${_js(c.target)})'), failAt);
           case 'back':
             await page.back(s);
-            await settle(s);
+            await settle(s, maxMs: _actionSettleMs);
           case 'screenshot':
             final name = c.name.isEmpty ? 'page' : c.name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
             final path = 'browser/${DateTime.now().millisecondsSinceEpoch}-$name.png';
@@ -240,7 +258,9 @@ class BrowserDriver {
       }
       rethrow;
     } finally {
-      if (shown) await page.hide(s);
+      // Leave it up: a run of a few quick steps would otherwise flash on and off screen
+      // before the person sees anything, and on a failure they can see where it stopped.
+      if (shown) await page.finished(s);
     }
   }
 
@@ -264,9 +284,7 @@ class BrowserDriver {
   Future<void> _open(String s, String url, {required bool fast, required int timeoutMs}) async {
     final JsonMap r;
     try {
-      r = await page
-          .open(s, url, fast: fast, timeoutMs: timeoutMs)
-          .timeout(Duration(milliseconds: timeoutMs + 5000));
+      r = await page.open(s, url, fast: fast, timeoutMs: timeoutMs).timeout(Duration(milliseconds: timeoutMs + 5000));
     } on TimeoutException {
       throw const BrowserException('the page stopped answering');
     }
@@ -360,7 +378,8 @@ class BrowserDriver {
 
   /// The first word of [rest] as a target (`"quoted words"` and `text="…"` stay whole), and the rest.
   static (String, String) _target(String rest) {
-    final m = RegExp(r'^(text="[^"]*"|"[^"]*"|\S+)\s*(.*)$', dotAll: true).firstMatch(rest);
+    // text="…" may hold escaped quotes (text="Say \"hi\""), as page targets do.
+    final m = RegExp(r'^(text="(?:[^"\\]|\\.)*"|"[^"]*"|\S+)\s*(.*)$', dotAll: true).firstMatch(rest);
     if (m == null) return ('', '');
     var target = m[1]!;
     if (target.startsWith('"') && target.endsWith('"') && target.length >= 2) {
@@ -371,13 +390,20 @@ class BrowserDriver {
 
   // ---------------------------------------------------------------- waiting, fast
 
-  /// Waits until the page has finished loading and stopped changing (or [maxMs] passed).
+  /// Waits until the page is usable: its HTML is parsed, its fetch/XHR calls are
+  /// done and its content stopped changing for [quiet] (or [maxMs] passed).
+  ///
+  /// It does not wait for images, ads or trackers (`readyState == 'complete'`), and
+  /// network calls still open after [_netGraceMs] (long polling, live feeds) are ignored.
+  /// After a click the cap is short: the next step waits for its own element anyway.
   Future<void> settle(String s, {int maxMs = 8000}) async {
     final start = DateTime.now();
     var lastCount = -1;
     var stableSince = DateTime.now();
     var lastUrl = '';
-    while (DateTime.now().difference(start).inMilliseconds < maxMs) {
+    while (true) {
+      final elapsed = DateTime.now().difference(start).inMilliseconds;
+      if (elapsed >= maxMs) return;
       final st = await _state(s);
       final count = asInt(st['mutations']);
       final url = asString(st['url']);
@@ -386,11 +412,17 @@ class BrowserDriver {
         lastUrl = url;
         stableSince = DateTime.now();
       }
-      final loaded = st['ready'] == 'complete';
-      if (loaded && DateTime.now().difference(stableSince) >= quiet) return;
+      final parsed = st['ready'] != 'loading';
+      final idle = asInt(st['net']) == 0 || elapsed >= _netGraceMs;
+      if (parsed && idle && DateTime.now().difference(stableSince) >= quiet) return;
       await Future<void>.delayed(poll);
     }
   }
+
+  static const _netGraceMs = 1500;
+
+  /// The longest to wait after a click, key press or going back.
+  static const _actionSettleMs = 3000;
 
   Future<void> waitFor(
     String s,
@@ -408,10 +440,10 @@ class BrowserDriver {
   }
 
   /// Waits up to [maxMs] for [target] to be on the page; the step itself reports it if it never is.
-  Future<void> _appear(String s, String target, int maxMs) async {
+  Future<void> _appear(String s, String target, int maxMs, {String check = 'present'}) async {
     final start = DateTime.now();
     while (DateTime.now().difference(start).inMilliseconds < maxMs) {
-      final r = await _act(s, 'fd.present(${_js(target)})');
+      final r = await _act(s, 'fd.$check(${_js(target)})');
       if (r['value'] == true || r['error'] != null) return;
       await Future<void>.delayed(poll * 2);
     }
@@ -420,16 +452,21 @@ class BrowserDriver {
   Future<JsonMap> _state(String s) => _act(s, 'fd.state()');
 
   /// Runs [body] with the `fd` helpers; its returned object.
+  ///
+  /// The helpers (several KB) are only sent when the page does not have them yet,
+  /// so the many small polls stay cheap.
   Future<JsonMap> _act(String s, String body) async {
     final code = body.startsWith('return') ? body : 'return $body';
+    final call = 'const fd = window.__fd; try { $code; } catch (e) { return {error: String(e && e.message || e)}; }';
+    final r = await _eval(s, '(function(){if (!window.__fd) return {__noHelpers: true};\n$call})()');
+    if (r['__noHelpers'] != true) return r;
+    return _eval(s, '(function(){$_helpers\n$call})()');
+  }
+
+  Future<JsonMap> _eval(String s, String js) async {
     final String? raw;
     try {
-      raw = await page
-          .eval(
-            s,
-            '(function(){$_helpers\nconst fd = window.__fd; try { $code; } catch (e) { return {error: String(e && e.message || e)}; }})()',
-          )
-          .timeout(callTimeout);
+      raw = await page.eval(s, js).timeout(callTimeout);
     } on TimeoutException {
       throw const BrowserException('the page stopped answering');
     }
@@ -449,40 +486,92 @@ class BrowserDriver {
 if (!window.__fd) {
   const label = (e) => ((e.getAttribute && (e.getAttribute('aria-label') || e.getAttribute('placeholder') || e.getAttribute('title') || e.getAttribute('alt'))) || e.innerText || e.value || (e.getAttribute && e.getAttribute('name')) || '').trim().replace(/\s+/g, ' ').slice(0, 80);
   const visible = (e) => { const r = e.getBoundingClientRect(); const st = getComputedStyle(e); return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none'; };
-  const clickable = 'a[href],button,input,select,textarea,summary,label,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[onclick],[contenteditable=true]';
+  const clickable = 'a[href],button,input,select,textarea,summary,label,[role=button],[role=link],[role=tab],[role=menuitem],[role=option],[role=checkbox],[role=switch],[onclick],[contenteditable=true]';
+  // Open shadow roots (web components), searched only when the page itself has no match.
+  const shadowRoots = () => {
+    const out = [];
+    const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { out.push(el.shadowRoot); walk(el.shadowRoot); } };
+    walk(document);
+    return out;
+  };
+  const queryAll = (sel) => {
+    let els;
+    try { els = [...document.querySelectorAll(sel)]; } catch (e) { throw new Error('not a valid selector: ' + sel); }
+    if (els.length) return els;
+    for (const r of shadowRoots()) els.push(...r.querySelectorAll(sel));
+    return els;
+  };
   const find = (t) => {
     if (/^\d+$/.test(t)) return document.querySelector('[data-fd-id="' + t + '"]');
     if (t.startsWith('text=')) {
-      const want = t.slice(5).replace(/^"|"$/g, '').trim().toLowerCase();
-      const els = [...document.querySelectorAll(clickable)].filter(visible);
+      const want = t.slice(5).replace(/^"|"$/g, '').replace(/\\"/g, '"').trim().toLowerCase();
+      const els = queryAll(clickable).filter(visible);
       return els.find((e) => label(e).toLowerCase() === want) || els.find((e) => label(e).toLowerCase().includes(want))
         || [...document.querySelectorAll('body *')].find((e) => e.children.length === 0 && visible(e) && (e.innerText || '').trim().toLowerCase().includes(want));
     }
-    try { return document.querySelector(t); } catch (e) { throw new Error('not a valid selector: ' + t); }
+    // Pages often keep hidden copies (mobile and desktop menus): use the one that is showing.
+    const els = queryAll(t);
+    return els.find(visible) || els[0] || null;
   };
-  // A target that still finds this element on the next visit (numbers are only for this view).
+  // Ids and names that frameworks make up per visit (mui-48213, ember392, :r1:, input-3f9a2c).
+  const generated = (v) => /\d{3,}|(?=[0-9a-f]*\d)[0-9a-f]{6,}|^(ember|mui|radix|react|headlessui|rc[-_]|:r)/i.test(v);
+  const unique = (sel) => { try { return document.querySelectorAll(sel).length === 1; } catch (x) { return false; } };
+  // A CSS path from the nearest ancestor with a lasting id (or body): always points at this one element.
+  const path = (e) => {
+    const parts = [];
+    let n = e;
+    for (; n && n.nodeType === 1 && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+      if (n !== e && n.id && /^[A-Za-z][\w-]*$/.test(n.id) && !generated(n.id) && unique('#' + n.id)) { parts.unshift('#' + n.id); break; }
+      const tag = n.tagName.toLowerCase();
+      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.tagName === n.tagName) : [];
+      parts.unshift(same.length > 1 ? tag + ':nth-of-type(' + (same.indexOf(n) + 1) + ')' : tag);
+    }
+    if (!n || n === document.body || n === document.documentElement) parts.unshift('body');
+    return parts.join(' > ');
+  };
+  // A target that still finds this element, and only this one, on the next visit
+  // (numbers are only for this view). Never a bare tag: that would hit the first of its kind.
   const stable = (e) => {
     const q = (v) => String(v).replace(/"/g, '\\"');
     const tag = e.tagName.toLowerCase();
-    const unique = (sel) => { try { return document.querySelectorAll(sel).length === 1; } catch (x) { return false; } };
-    if (e.id && /^[A-Za-z][\w-]*$/.test(e.id) && unique('#' + e.id)) return '#' + e.id;
-    for (const a of ['name', 'aria-label', 'placeholder', 'data-testid']) {
+    if (e.id && /^[A-Za-z][\w-]*$/.test(e.id) && !generated(e.id) && unique('#' + e.id)) return '#' + e.id;
+    for (const a of ['data-testid', 'name', 'aria-label', 'placeholder']) {
       const v = e.getAttribute(a);
-      if (v && unique(tag + '[' + a + '="' + q(v) + '"]')) return tag + '[' + a + '="' + q(v) + '"]';
+      if (!v || ((a === 'name' || a === 'data-testid') && generated(v))) continue;
+      if (unique(tag + '[' + a + '="' + q(v) + '"]')) return tag + '[' + a + '="' + q(v) + '"]';
     }
     const l = label(e);
-    if (l) return 'text="' + q(l) + '"';
-    return tag;
+    if (l) {
+      const same = [...document.querySelectorAll(clickable)].filter((x) => visible(x) && label(x).toLowerCase() === l.toLowerCase());
+      if (same.length === 1 && same[0] === e) return 'text="' + q(l) + '"';
+    }
+    return path(e);
+  };
+  // What a real tap sends: pointer and mouse presses first (many menus and React
+  // widgets only listen to those), then the click.
+  const tap = (e) => {
+    const r = e.getBoundingClientRect();
+    const o = {bubbles: true, cancelable: true, composed: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0};
+    try { e.dispatchEvent(new PointerEvent('pointerdown', Object.assign({pointerType: 'touch', isPrimary: true}, o))); } catch (x) {}
+    e.dispatchEvent(new MouseEvent('mousedown', o));
+    e.focus && e.focus();
+    try { e.dispatchEvent(new PointerEvent('pointerup', Object.assign({pointerType: 'touch', isPrimary: true}, o))); } catch (x) {}
+    e.dispatchEvent(new MouseEvent('mouseup', o));
+    e.click();
   };
   const need = (t) => { const e = find(t); if (!e) throw new Error('nothing on the page matches ' + t); return e; };
   window.__fdMutations = 0;
-  try { new MutationObserver((m) => { window.__fdMutations += m.length; }).observe(document, {subtree: true, childList: true, attributes: true, characterData: true}); } catch (e) {}
+  // Only added and removed content counts: style and attribute churn (animations,
+  // carousels, timers) would otherwise keep the page "busy" forever.
+  try { new MutationObserver((m) => { window.__fdMutations += m.length; }).observe(document, {subtree: true, childList: true}); } catch (e) {}
   window.__fd = {
-    state: () => ({ready: document.readyState, url: location.href, title: document.title, mutations: window.__fdMutations}),
+    state: () => ({ready: document.readyState, url: location.href, title: document.title, mutations: window.__fdMutations, net: window.__fdNet || 0}),
     loginWall: () => ({value: [...document.querySelectorAll('input[type=password]')].some(visible)
       || /\/(login|log-in|signin|sign-in|sign_in|auth)(\/|$|\?)/i.test(location.pathname)}),
     present: (t) => ({value: (() => { const e = find(t); return !!e && visible(e); })()}),
-    click: (t) => { const e = need(t); e.scrollIntoView({block: 'center'}); e.focus && e.focus(); e.click(); return {ok: true}; },
+    // Showing and usable: buttons that turn on later (once a form is filled) are waited for.
+    actionable: (t) => ({value: (() => { const e = find(t); return !!e && visible(e) && !e.disabled && e.getAttribute('aria-disabled') !== 'true'; })()}),
+    click: (t) => { const e = need(t); e.scrollIntoView({block: 'center'}); tap(e); return {ok: true}; },
     type: (t, text) => {
       const e = need(t); e.scrollIntoView({block: 'center'}); e.focus && e.focus();
       if (e.isContentEditable) { e.textContent = text; } else {
@@ -500,8 +589,8 @@ if (!window.__fd) {
     },
     scroll: (t) => { if (t) need(t).scrollIntoView({block: 'center'}); else window.scrollBy(0, innerHeight * 0.9); return {ok: true}; },
     extract: (sel, all, attr) => {
-      let els;
-      try { els = all ? [...document.querySelectorAll(sel)] : [document.querySelector(sel)].filter(Boolean); } catch (e) { throw new Error('not a valid selector: ' + sel); }
+      const found = queryAll(sel);
+      const els = all ? found : [found.find(visible) || found[0]].filter(Boolean);
       if (!all && els.length === 0) throw new Error('nothing on the page matches ' + sel);
       const read = (e) => attr ? (attr === 'href' && e.href ? e.href : attr === 'src' && e.src ? e.src : e.getAttribute(attr)) : (e.innerText || e.value || e.textContent || '').trim();
       return {value: all ? els.map(read) : read(els[0])};
@@ -560,17 +649,17 @@ if (!window.__fd) {
         break;
       case 'click':
         await act('fd.click(${_js(target)})');
-        await settle(s);
+        await settle(s, maxMs: _actionSettleMs);
       case 'type':
         await act('fd.type(${_js(target)}, ${_js(text)})');
       case 'press':
         await act('fd.press(${_js(text.isEmpty ? 'Enter' : text)})');
-        await settle(s);
+        await settle(s, maxMs: _actionSettleMs);
       case 'scroll':
         await act('fd.scroll(${_js(target)})');
       case 'back':
         await page.back(s);
-        await settle(s);
+        await settle(s, maxMs: _actionSettleMs);
       default:
         throw BrowserException('unknown action “$action”');
     }

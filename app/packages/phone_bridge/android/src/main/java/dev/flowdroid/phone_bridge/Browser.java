@@ -153,6 +153,13 @@ final class Browser {
             }
 
             @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                // The new page is showing: hand it over now instead of waiting for every
+                // script, tracker and ad to finish. The driver waits for the DOM itself.
+                if (session.started) loaded(session, url);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 // A finish without a start is the page before (stopped), not this load.
                 if (session.started) loaded(session, url);
@@ -188,7 +195,7 @@ final class Browser {
 
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                if (session.fast && !request.isForMainFrame() && heavy(request.getUrl())) {
+                if (session.fast && !request.isForMainFrame() && (heavy(request.getUrl()) || tracker(request.getUrl()))) {
                     return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
                 }
                 return null;
@@ -196,7 +203,7 @@ final class Browser {
         });
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             try {
-                WebViewCompat.addDocumentStartJavaScript(web, VISIBLE_SHIM, Collections.singleton("*"));
+                WebViewCompat.addDocumentStartJavaScript(web, VISIBLE_SHIM + NETWORK_SHIM, Collections.singleton("*"));
             } catch (Throwable ignored) {
                 // Old WebView: pages still work, some only less well while hidden.
             }
@@ -249,6 +256,40 @@ final class Browser {
         + "var run=function(t){if(!done){done=true;cb(t||performance.now());}};"
         + "var id=raf(run);setTimeout(run,100);return id;};"
         + "}catch(e){}})();";
+
+    /**
+     * Counts the page's fetch and XHR requests still in flight (window.__fdNet), so the
+     * driver can move on the moment the page has its data instead of guessing with delays.
+     */
+    private static final String NETWORK_SHIM = "(function(){try{"
+        + "window.__fdNet=0;var dec=function(){window.__fdNet=Math.max(0,window.__fdNet-1);};"
+        + "var f=window.fetch;if(f){window.fetch=function(){window.__fdNet++;"
+        + "try{return f.apply(this,arguments).then(function(r){dec();return r;},function(e){dec();throw e;});}"
+        + "catch(e){dec();throw e;}};}"
+        + "var send=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(){"
+        + "window.__fdNet++;var x=this,done=false;var end=function(){if(!done){done=true;dec();}};"
+        + "x.addEventListener('loadend',end);try{return send.apply(x,arguments);}catch(e){end();throw e;}};"
+        + "}catch(e){}})();";
+
+    /** Ad, analytics and tracking hosts: fast mode skips them (they only slow pages down). */
+    private static final String[] TRACKERS = {
+        "doubleclick.net", "googlesyndication.com", "google-analytics.com", "googletagmanager.com",
+        "googletagservices.com", "googleadservices.com", "adservice.google.com", "connect.facebook.net",
+        "facebook.com/tr", "analytics.tiktok.com", "hotjar.com", "clarity.ms", "segment.io", "segment.com",
+        "mixpanel.com", "amplitude.com", "newrelic.com", "nr-data.net", "scorecardresearch.com",
+        "quantserve.com", "taboola.com", "outbrain.com", "criteo.com", "adnxs.com", "amazon-adsystem.com",
+        "bat.bing.com", "ads-twitter.com", "static.ads-twitter.com", "snap.licdn.com", "fullstory.com",
+    };
+
+    private static boolean tracker(Uri uri) {
+        String host = uri.getHost();
+        if (host == null) return false;
+        String where = (host + (uri.getPath() == null ? "" : uri.getPath())).toLowerCase(Locale.ROOT);
+        for (String t : TRACKERS) {
+            if (where.startsWith(t) || where.contains("." + t)) return true;
+        }
+        return false;
+    }
 
     /**
      * Runs a session headless. With "display over other apps" allowed, the page goes into

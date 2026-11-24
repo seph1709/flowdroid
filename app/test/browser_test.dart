@@ -36,7 +36,7 @@ class _FakePage implements BrowserPage {
     if (call.contains('#missing')) return jsonEncode({'error': 'nothing on the page matches #missing'});
     if (call.startsWith('fd.click("text=\\"Next\\"")')) url = 'https://shop.example/page2';
     if (call.startsWith('fd.click("3")')) url = 'https://evil.example/';
-    if (call.startsWith('fd.present')) return jsonEncode({'value': true});
+    if (call.startsWith('fd.present') || call.startsWith('fd.actionable')) return jsonEncode({'value': true});
     if (call.startsWith('fd.extract(".price", true')) {
       return jsonEncode({
         'value': ['9', '12'],
@@ -78,6 +78,9 @@ class _FakePage implements BrowserPage {
 
   @override
   Future<void> hide(String session) async => calls.add('hide');
+
+  @override
+  Future<void> finished(String session) async => calls.add('finished');
 }
 
 void main() {
@@ -167,7 +170,12 @@ js document.title
       });
       expect(asMapList(result['screenshots']).single['mimeType'], 'image/png');
       expect(page.calls.first, 'open https://shop.example/ fast=true');
-      expect(page.calls, containsAllInOrder(['show', 'fd.type("#q", "shoes")', 'fd.click("text=\\"Next\\"")', 'hide']));
+      expect(
+        page.calls,
+        containsAllInOrder(['show', 'fd.type("#q", "shoes")', 'fd.click("text=\\"Next\\"")', 'finished']),
+      );
+      // A finished run leaves the page on screen for the person to close.
+      expect(page.calls, isNot(contains('hide')));
     });
 
     test('a step that fails names its line, and the run goes on to the next item', () async {
