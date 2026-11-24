@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/seph1709/flowdroid/actions/workflows/ci.yml"><img src="https://github.com/seph1709/flowdroid/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
-  <a href="https://github.com/seph1709/flowdroid/releases/latest"><img src="https://img.shields.io/github/v/release/seph1709/flowdroid" alt="Latest release"></a>
+  <a href="https://github.com/seph1709/flowdroid/releases"><img src="https://img.shields.io/github/v/release/seph1709/flowdroid?include_prereleases&label=beta" alt="Latest beta"></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84.svg?logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/Flutter-02569B.svg?logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/Rust-000000.svg?logo=rust&logoColor=white" alt="Rust">
@@ -100,14 +100,14 @@ anything. It works with your own Claude, ChatGPT or Gemini account.
 
 ## Get started
 
-1. Download the APK from the [latest release](https://github.com/seph1709/flowdroid/releases/latest)
+1. Download the APK from the [releases page](https://github.com/seph1709/flowdroid/releases)
    and install it on your Android phone.
 2. Tap **New workflow**, or start from one of the ready-made templates.
 3. Add your steps and tap **Run** to try it out. Each step shows what came
    in and what went out, so it's easy to see what happened.
 4. Switch the workflow on, and it runs by itself from then on.
 
-FlowDroid isn't on the Play Store yet. To build the app yourself instead,
+FlowDroid is in beta and isn't on the Play Store yet. To build the app yourself instead,
 follow the [developer guide](docs/development.md).
 
 ## Good to know
