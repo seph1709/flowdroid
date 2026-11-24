@@ -42,7 +42,8 @@ host-lib:
 	cd $(CORE) && cargo build --release -p flowcore-ffi
 
 app-lint:
-	cd $(APP) && dart format --set-exit-if-changed lib test && flutter analyze
+	# pub get first: without it dart format cannot read the 120-column page width.
+	cd $(APP) && flutter pub get && dart format --set-exit-if-changed lib test && flutter analyze
 
 app-test: host-lib
 	cd $(APP) && flutter test
