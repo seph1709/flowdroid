@@ -15,6 +15,9 @@ class _FakePage implements BrowserPage {
   bool showFails = false;
   int mutations = 0;
 
+  /// The page keeps changing until then (a ticker, a slow feed).
+  DateTime? busyUntil;
+
   /// The `fd.*` call inside the driver's script, e.g. `fd.click("#go")`.
   static String _call(String js) =>
       RegExp(r'const fd = window\.__fd; try \{ return (.*?); \} catch', dotAll: true).firstMatch(js)![1]!;
@@ -30,6 +33,7 @@ class _FakePage implements BrowserPage {
   Future<String?> eval(String session, String js) async {
     final call = _call(js);
     if (call.startsWith('fd.state()')) {
+      if (busyUntil case final until? when DateTime.now().isBefore(until)) mutations++;
       return jsonEncode({'ready': 'complete', 'url': url, 'title': 'Shop', 'mutations': mutations});
     }
     calls.add(call);
@@ -132,6 +136,12 @@ js document.title
       ]);
     });
 
+    test('js adds return only when the code has no return statement', () {
+      final c = BrowserDriver.parse('js document.querySelector(".returns").innerText\njs const a = 1; return a');
+      expect(c.first.text, 'return (document.querySelector(".returns").innerText)');
+      expect(c.last.text, 'const a = 1; return a');
+    });
+
     test('points at the line that is wrong', () {
       Matcher fails(Object message) => throwsA(isA<BrowserException>().having((e) => e.message, 'message', message));
       expect(() => BrowserDriver.parse('click #a\nhover #b'), fails(startsWith('line 2: unknown step “hover”')));
@@ -189,6 +199,31 @@ js document.title
       final results = asMapList(r['results']);
       expect(results.first, {'error': 'line 2: nothing on the page matches #missing'});
       expect(asMap(results.last['data'])['name'], 'Cheap shoes');
+    });
+
+    test('a hidden run marks a window left open by an earlier run as finished', () async {
+      await driver.call({
+        'runs': [
+          {'url': 'https://shop.example/', 'steps': 'extract name h1'},
+        ],
+        'timeoutMs': 5000,
+      });
+      expect(page.calls, isNot(contains('show')));
+      expect(page.calls.last, 'finished');
+    });
+
+    test('a run out of time does nothing more on the page', () async {
+      // Busy past the time limit, then calm: a run left going would click now.
+      page.busyUntil = DateTime.now().add(const Duration(milliseconds: 400));
+      final r = await driver.call({
+        'runs': [
+          {'url': 'https://shop.example/', 'steps': 'click #ok'},
+        ],
+        'timeoutMs': 200,
+      });
+      expect(asMapList(r['results']).single['error'], contains('did not finish'));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      expect(page.calls.where((c) => c.startsWith('fd.click')), isEmpty);
     });
 
     test('stops at the timeout', () async {

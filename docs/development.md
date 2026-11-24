@@ -70,9 +70,10 @@ The launcher and status-bar icons use the same mark.
 - Some phone brands add their own app killers on top of Android's. If
   workflows stop in the background on yours, allow "autostart" or set the app's
   battery setting to "Unrestricted".
-- A webhook without a key accepts any caller on the same network. Set a key on
-  the Webhook trigger (and on MCP tools), use hard-to-guess paths, and don't
-  leave webhook workflows active on untrusted Wi-Fi.
+- A webhook without a key accepts any caller on the same network (web pages
+  open in a browser are refused). Set a key on the Webhook trigger (and on MCP
+  tools), use hard-to-guess paths, and don't leave webhook workflows active on
+  untrusted Wi-Fi.
 - Background schedules use WorkManager, so they fire at most every 15 minutes
   and may be late on battery saver. While the app is open, it checks every minute.
 - Strings are UTF-8 in Rust. A `slice` that cuts an emoji in half yields U+FFFD.

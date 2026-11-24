@@ -49,7 +49,24 @@ class WebhookServer {
     if (_server != null) return;
     final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _server = server;
-    unawaited(server.forEach(_handle));
+    // Each request on its own: a long workflow must not hold up the others, and one
+    // request that fails must not stop the server (forEach would end at its error).
+    server.listen((request) => unawaited(_handleSafely(request)));
+  }
+
+  Future<void> _handleSafely(HttpRequest request) async {
+    try {
+      await _handle(request);
+    } on Object catch (e) {
+      // Bad input (an invalid %-escape in the address, a body that is not UTF-8) is the
+      // caller's mistake; anything else is ours.
+      final bad = e is FormatException || e is ArgumentError;
+      try {
+        await _reply(request.response, bad ? 400 : 500, {'error': bad ? 'bad request: $e' : 'FlowDroid failed: $e'});
+      } on Object catch (_) {
+        // The answer was already sent, or the caller is gone.
+      }
+    }
   }
 
   Future<void> stop() async {
@@ -101,13 +118,25 @@ class WebhookServer {
     final hookPath = path.substring(_prefix.length);
     final matching = await _matching(hookPath, request.method);
     if (matching.isEmpty) return _reply(request.response, 404, {'error': 'no active workflow listens on $hookPath'});
+    // A web page open in a browser can POST here too (browsers allow simple cross-site
+    // posts). Servers, apps and curl send no Origin, so only keyed triggers accept one.
+    final origin = request.headers.value('origin');
+    final fromWebPage = origin != null && !_localOrigin(origin);
+    var blocked = false;
     final keyHeaders = <String>{};
     final targets = <(Workflow, WorkflowNode)>[];
     for (final target in matching) {
       final (ok, header) = await _authorized(target.$2, request);
       if (!ok) continue;
+      if (header == null && fromWebPage) {
+        blocked = true;
+        continue;
+      }
       targets.add(target);
       if (header != null) keyHeaders.add(header);
+    }
+    if (targets.isEmpty && blocked) {
+      return _reply(request.response, 403, {'error': 'web pages may only call webhooks that have a key'});
     }
     if (targets.isEmpty) return _reply(request.response, 401, {'error': 'missing or wrong key'});
 

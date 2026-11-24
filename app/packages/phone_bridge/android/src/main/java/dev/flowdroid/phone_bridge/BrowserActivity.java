@@ -53,9 +53,17 @@ public class BrowserActivity extends Activity {
     private TextView address;
     private Button button;
     private boolean login;
+    /** On screen now, not just open behind other apps. */
+    private boolean resumed;
 
     static boolean isOpen(String id) {
         return OPEN.containsKey(id);
+    }
+
+    /** Open and in front of the person (not left behind after they switched apps). */
+    static boolean isShowing(String id) {
+        BrowserActivity activity = OPEN.get(id);
+        return activity != null && activity.resumed;
     }
 
     /**
@@ -141,6 +149,18 @@ public class BrowserActivity extends Activity {
         if (parent != null) parent.removeView(web);
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        resumed = true;
+    }
+
+    @Override
+    protected void onPause() {
+        resumed = false;
+        super.onPause();
     }
 
     @Override

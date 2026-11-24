@@ -199,6 +199,8 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
             case "browserOpen": {
                 Number timeout = call.argument("timeoutMs");
                 Boolean fast = call.argument("fast");
+                // A window left open by the last run shows this page too: it is busy again.
+                BrowserActivity.status(call.argument("session"), true);
                 Browser.open(context, call.argument("session"), call.argument("url"), Boolean.TRUE.equals(fast),
                     timeout == null ? 30000 : timeout.longValue(), once(result));
                 break;
@@ -569,8 +571,9 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
         if (!DeviceActions.onScreen() && !Settings.canDrawOverlays(context)) {
             return Browser.error("showing the browser needs FlowDroid on screen");
         }
-        if (!login && BrowserActivity.isOpen(session)) {
+        if (!login && BrowserActivity.isShowing(session)) {
             // Already on screen (left up by the last run): reuse it, no new window sliding in.
+            // One left behind other apps is replaced below, so the run is seen.
             BrowserActivity.status(session, true);
             return new HashMap<>();
         }

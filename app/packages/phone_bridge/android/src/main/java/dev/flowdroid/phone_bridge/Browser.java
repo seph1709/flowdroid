@@ -169,6 +169,9 @@ final class Browser {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (!request.isForMainFrame()) return;
+                // Opening a page stops the one before, and that stop can arrive late as
+                // ERR_ABORTED: it is not an error of the page now loading.
+                if (String.valueOf(error.getDescription()).contains("ERR_ABORTED")) return;
                 session.finishLoad(error("could not load " + request.getUrl() + ": " + error.getDescription()));
             }
 

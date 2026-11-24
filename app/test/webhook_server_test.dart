@@ -43,4 +43,40 @@ void main() {
     final response = await (await HttpClient().get('127.0.0.1', server.boundPort, '/webhook/missing')).close();
     expect(response.statusCode, 404);
   });
+
+  test('a bad request gets a 400 and the server keeps answering', () async {
+    final repository = await tempRepository();
+    final runner = WorkflowRunner(core: core, effects: FakeEffects(), repository: repository);
+    final server = WebhookServer(repository: repository, runner: runner, port: 0);
+    final wf = templates.firstWhere((t) => t.title == 'Webhook to notification').build()..active = true;
+    await repository.saveWorkflow(wf);
+    await server.start();
+    addTearDown(server.stop);
+
+    final client = HttpClient();
+    // Not valid UTF-8.
+    final bad = await client.post('127.0.0.1', server.boundPort, '/webhook/notify');
+    bad.add([0xff, 0xfe, 0xfd]);
+    expect((await bad.close()).statusCode, 400);
+
+    final ok = await client.post('127.0.0.1', server.boundPort, '/webhook/notify');
+    ok.headers.contentType = ContentType.json;
+    ok.write(jsonEncode({'title': 'Still here'}));
+    expect((await ok.close()).statusCode, 200);
+  });
+
+  test('a web page may not call a webhook that has no key', () async {
+    final repository = await tempRepository();
+    final runner = WorkflowRunner(core: core, effects: FakeEffects(), repository: repository);
+    final server = WebhookServer(repository: repository, runner: runner, port: 0);
+    final wf = templates.firstWhere((t) => t.title == 'Webhook to notification').build()..active = true;
+    await repository.saveWorkflow(wf);
+    await server.start();
+    addTearDown(server.stop);
+
+    final request = await HttpClient().post('127.0.0.1', server.boundPort, '/webhook/notify');
+    request.headers.set('Origin', 'https://evil.example');
+    request.write('{}');
+    expect((await request.close()).statusCode, 403);
+  });
 }

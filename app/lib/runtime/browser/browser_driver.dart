@@ -87,6 +87,7 @@ class BrowserDriver {
   /// The clock alone is not enough: two drivers made within one clock tick would share it.
   final _tag = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${_made++}';
   static int _made = 0;
+  int _shots = 0;
 
   /// The session Browser steps share (kept warm between runs); one run at a time.
   String get runSession => 'run-$_tag';
@@ -153,16 +154,18 @@ class BrowserDriver {
     } on BrowserException catch (e) {
       if (progress.acted || !isRetryable(e.message)) rethrow;
     } on TimeoutException {
+      progress.stopped = true;
       if (progress.acted) rethrow;
     }
     await Future<void>.delayed(const Duration(seconds: 1));
-    return runScript(
-      url,
-      script,
-      visible: visible,
-      fast: fast,
-      timeoutMs: timeoutMs,
-    ).timeout(Duration(milliseconds: timeoutMs));
+    final again = BrowserProgress();
+    return runScript(url, script, visible: visible, fast: fast, timeoutMs: timeoutMs, progress: again).timeout(
+      Duration(milliseconds: timeoutMs),
+      onTimeout: () {
+        again.stopped = true;
+        throw TimeoutException('the steps did not finish', Duration(milliseconds: timeoutMs));
+      },
+    );
   }
 
   /// Failures that a fresh try can fix: a crashed or closed browser, or a network blip.
@@ -187,22 +190,29 @@ class BrowserDriver {
     Future<void> ready(String target) => _appear(s, target, waitMs, check: 'actionable');
     final data = <String, Object?>{};
     final screenshots = <JsonMap>[];
+    final deadline = DateTime.now().add(Duration(milliseconds: timeoutMs));
+    int left() => deadline.difference(DateTime.now()).inMilliseconds;
+    // Waiting for the page never runs past the time limit either.
+    Future<void> settleIn([int cap = 8000]) => settle(s, maxMs: left().clamp(0, cap));
     await _open(s, url, fast: fast, timeoutMs: timeoutMs);
-    await settle(s);
-    var shown = false;
-    if (visible) shown = !(await page.show(s)).containsKey('error');
+    await settleIn();
+    if (visible) await page.show(s);
     try {
       for (final c in commands) {
         Never failAt(String message) => throw BrowserException('line ${c.line}: $message');
+        // Out of time, or the caller already gave up: do nothing more on the page.
+        if (progress?.stopped == true || left() <= 0) {
+          throw BrowserException('the steps did not finish within ${(timeoutMs / 1000).round()} s');
+        }
         switch (c.verb) {
           case 'open':
             await _open(s, c.target, fast: fast, timeoutMs: timeoutMs);
-            await settle(s);
+            await settleIn();
           case 'click':
             await ready(c.target);
             progress?.acted = true;
             _check(await _act(s, 'fd.click(${_js(c.target)})'), failAt);
-            await settle(s, maxMs: _actionSettleMs);
+            await settleIn(_actionSettleMs);
           case 'type':
             await ready(c.target);
             progress?.acted = true;
@@ -210,12 +220,18 @@ class BrowserDriver {
           case 'press':
             progress?.acted = true;
             _check(await _act(s, 'fd.press(${_js(c.target)})'), failAt);
-            await settle(s, maxMs: _actionSettleMs);
+            await settleIn(_actionSettleMs);
           case 'wait':
             if (c.target.isEmpty) {
-              await Future<void>.delayed(Duration(milliseconds: (double.parse(c.text) * 1000).round()));
+              final ms = (double.parse(c.text) * 1000).round();
+              if (ms >= left()) {
+                // It would run past the time limit: wait out what is left, then stop.
+                await Future<void>.delayed(Duration(milliseconds: left().clamp(0, ms)));
+                throw BrowserException('the steps did not finish within ${(timeoutMs / 1000).round()} s');
+              }
+              await Future<void>.delayed(Duration(milliseconds: ms));
             } else {
-              await waitFor(s, c.target, timeoutMs: timeoutMs, failAt: failAt);
+              await waitFor(s, c.target, timeoutMs: left(), failAt: failAt);
             }
           case 'extract':
             await appear(c.target);
@@ -226,10 +242,11 @@ class BrowserDriver {
             _check(await _act(s, 'fd.scroll(${_js(c.target)})'), failAt);
           case 'back':
             await page.back(s);
-            await settle(s, maxMs: _actionSettleMs);
+            await settleIn(_actionSettleMs);
           case 'screenshot':
             final name = c.name.isEmpty ? 'page' : c.name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-            final path = 'browser/${DateTime.now().millisecondsSinceEpoch}-$name.png';
+            // The counter keeps two screenshots taken within one millisecond apart.
+            final path = 'browser/${DateTime.now().millisecondsSinceEpoch}-${_shots++}-$name.png';
             final r = await page.screenshot(s, path);
             if (r['error'] case final String error) failAt(error);
             screenshots.add(await saveScreenshot(path));
@@ -237,10 +254,9 @@ class BrowserDriver {
             final r = _check(await _act(s, 'return {ok: true, value: (function(){ ${c.text} })()}'), failAt);
             data[c.name.isEmpty ? 'js' : c.name] = r['value'];
           case 'show':
-            shown = !(await page.show(s)).containsKey('error');
+            await page.show(s);
           case 'hide':
             await page.hide(s);
-            shown = false;
         }
       }
       final state = await _state(s);
@@ -260,7 +276,11 @@ class BrowserDriver {
     } finally {
       // Leave it up: a run of a few quick steps would otherwise flash on and off screen
       // before the person sees anything, and on a failure they can see where it stopped.
-      if (shown) await page.finished(s);
+      // Also sent when this run was hidden: a window left open by an earlier run may
+      // have shown it. A failure here must not hide the run's own result or error.
+      try {
+        await page.finished(s);
+      } on Object catch (_) {}
     }
   }
 
@@ -370,7 +390,9 @@ class BrowserDriver {
           out.add(BrowserCommand(n, verb, name: rest));
         case 'js':
           if (rest.isEmpty) bad('js needs code, e.g. js return document.title');
-          out.add(BrowserCommand(n, verb, text: rest.contains('return') ? rest : 'return ($rest)'));
+          // Only a real `return` statement counts: `.returns` or `return-policy` in a selector do not.
+          final returns = RegExp(r'(^|[;{}\s])return([\s;(]|$)').hasMatch(rest);
+          out.add(BrowserCommand(n, verb, text: returns ? rest : 'return ($rest)'));
       }
     }
     return out;
@@ -690,4 +712,8 @@ if (!window.__fd) {
 /// What a run has done so far: after a click or typing it is not safe to start over.
 class BrowserProgress {
   bool acted = false;
+
+  /// Set when the caller gave up on the run (it timed out): the script stops before its
+  /// next step, so a run reported as failed never goes on clicking in the background.
+  bool stopped = false;
 }
