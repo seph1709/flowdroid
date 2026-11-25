@@ -627,6 +627,8 @@ if (!window.__fd) {
   try { new MutationObserver((m) => { window.__fdMutations += m.length; }).observe(document, {subtree: true, childList: true}); } catch (e) {}
   window.__fd = {
     state: () => ({ready: document.readyState, url: location.href, title: document.title, mutations: window.__fdMutations, net: window.__fdNet || 0}),
+    // Whether there is anything to press or fill in yet (also in same-site frames).
+    content: () => ({value: scopes().some((r) => [...r.querySelectorAll(clickable)].some(visible))}),
     // What a person would see first: for error messages.
     glance: () => ({url: location.href, title: document.title, dialog: window.__fdDialog || '',
       text: (document.body ? document.body.innerText : '').replace(/\s+/g, ' ').trim().slice(0, 240)}),
@@ -744,6 +746,9 @@ if (!window.__fd) {
       default:
         throw BrowserException('unknown action “$action”');
     }
+    // Big web apps (mail, chat, dashboards) draw their buttons well after the page
+    // "loads": wait for something to use before reading it, briefly after an action.
+    if (action != 'read') await _waitForContent(s, action == 'open' ? 12000 : 3000);
     final view = await act('fd.snapshot(4000)');
     final url = asString(view['url']);
     if (!ok(url)) {
@@ -751,7 +756,31 @@ if (!window.__fd) {
       await settle(s);
       throw BrowserException('that led to $url, which this tool may not visit; went back');
     }
-    return pageView(view);
+    final seen = pageView(view);
+    if (asList(view['elements']).isNotEmpty) return seen;
+    // Nothing to press or fill in: a picture of the page says what words can't.
+    try {
+      final path = 'browser/assistant-${DateTime.now().millisecondsSinceEpoch}-${_shots++}.png';
+      final r = await page.screenshot(s, path);
+      if (r['error'] == null) {
+        await saveScreenshot(path);
+        return '$seen\nNo buttons or fields were found. A screenshot of the page is at /root/files/$path';
+      }
+    } on Object catch (_) {}
+    return seen;
+  }
+
+  /// Waits up to [maxMs] for the page to show a button, link or field.
+  Future<void> _waitForContent(String s, int maxMs) async {
+    final start = DateTime.now();
+    while (DateTime.now().difference(start).inMilliseconds < maxMs) {
+      try {
+        if ((await _act(s, 'fd.content()'))['value'] == true) return;
+      } on BrowserException {
+        return;
+      }
+      await Future<void>.delayed(poll * 4);
+    }
   }
 
   /// What the AI reads: title, address, numbered elements and the page text.

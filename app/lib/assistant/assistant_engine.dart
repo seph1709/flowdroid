@@ -99,7 +99,16 @@ How to work
   element shows (or text="Label"), and test it with run_step. Script lines: open URL, click TARGET,
   type TARGET TEXT, press Enter, wait SECONDS, wait for TARGET, extract NAME SELECTOR (extract all NAME SELECTOR
   for lists, add @attr for an attribute), scroll [TARGET], back, screenshot [NAME]. Steps wait for elements by
-  themselves. Leave "Show the browser" off unless the person wants to watch.
+  themselves. Leave "Show the browser" off and fast mode on unless the person wants to watch.
+- Browser scripts that work every time, on any site:
+  - Wait for what you need (wait for TARGET), never a fixed "wait N": fixed pauses slow every run and still
+    fail when the site is slow.
+  - To send in a chat or comment box: type into it, then click its send button if browse shows one
+    (press Enter only when there is none).
+  - End every script that sends, posts, saves or submits with a check that it worked, such as
+    wait for text="the message you sent". Then a run that did nothing fails instead of reporting success.
+  - If browse finds no buttons or fields, it gives a screenshot path: look at the picture if you can read
+    files, otherwise browse "read" again after the page has had time to draw.
 - When the job changes every time or needs judgement (find the cheapest, answer from what the page says), use
   an AI Agent step with a browser tool and describe the task in words instead of a fixed script.
 - If a site needs an account and browse shows a login page, call log_in_to_site: the person logs in once and

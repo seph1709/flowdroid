@@ -15,6 +15,9 @@ class _FakePage implements BrowserPage {
   bool showFails = false;
   int mutations = 0;
 
+  /// The page drew nothing to press or fill in.
+  bool blank = false;
+
   /// The page's visible text, as fd.glance() reads it.
   String glanceText = '';
 
@@ -53,11 +56,12 @@ class _FakePage implements BrowserPage {
       });
     }
     if (call.startsWith('fd.extract')) return jsonEncode({'value': 'Cheap shoes'});
+    if (call.startsWith('fd.content')) return jsonEncode({'value': !blank});
     if (call.startsWith('fd.snapshot')) {
       return jsonEncode({
         'url': url,
         'title': 'Shop',
-        'elements': ['[1] link "Next"', '[2] input text "Search" value=""'],
+        'elements': blank ? <String>[] : ['[1] link "Next"', '[2] input text "Search" value=""'],
         'text': 'Welcome',
         'more': false,
       });
@@ -259,6 +263,18 @@ js document.title
   });
 
   group('AI Agent browser tool', () {
+    test('a page with nothing to press comes with a screenshot', () async {
+      page.blank = true;
+      final view = await BrowserDriver(
+        page,
+        saveScreenshot: (path) async => {'path': path},
+        poll: const Duration(milliseconds: 1),
+        quiet: const Duration(milliseconds: 5),
+      ).agent({'action': 'read'}, '');
+      expect(view, contains('No buttons or fields were found. A screenshot of the page is at /root/files/browser/'));
+      expect(page.screenshots, hasLength(1));
+    });
+
     test('returns the page with numbered elements after each action', () async {
       final view = await driver.agent({'action': 'open', 'url': 'https://shop.example/'}, 'shop.example');
       expect(view, contains('URL: https://shop.example/'));
