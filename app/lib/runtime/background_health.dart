@@ -70,13 +70,25 @@ class BackgroundHealth {
       pauses.add([last.millisecondsSinceEpoch, now.millisecondsSinceEpoch]);
       if (pauses.length > _keep) pauses.removeRange(0, pauses.length - _keep);
     }
-    await _write({'lastBeat': now.millisecondsSinceEpoch, 'pauses': pauses});
+    await _write({...data, 'lastBeat': now.millisecondsSinceEpoch, 'pauses': pauses});
   }
 
   /// Forgets the last beat, so turning "Keep running" back on doesn't count the off time as a pause.
   Future<void> restart() async {
     final data = await _read();
-    await _write({'pauses': data['pauses'] ?? const []});
+    await _write({...data}..remove('lastBeat'));
+  }
+
+  /// The person closed the pause warning: pauses up to now are no longer shown.
+  Future<void> dismiss() async {
+    final data = await _read();
+    await _write({...data, 'dismissedAt': _clock().millisecondsSinceEpoch});
+  }
+
+  /// When the pause warning was last closed, if ever.
+  Future<DateTime?> dismissedAt() async {
+    final v = (await _read())['dismissedAt'];
+    return v is int ? DateTime.fromMillisecondsSinceEpoch(v) : null;
   }
 
   Future<DateTime?> lastBeat() async {

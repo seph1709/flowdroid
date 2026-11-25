@@ -491,15 +491,30 @@ class _BackgroundHint extends StatelessWidget {
 }
 
 /// Shown while "Keep running" is on but the phone paused FlowDroid anyway.
-class _PausedHint extends StatelessWidget {
+class _PausedHint extends StatefulWidget {
   const _PausedHint();
 
+  @override
+  State<_PausedHint> createState() => _PausedHintState();
+}
+
+class _PausedHintState extends State<_PausedHint> {
   Future<String?> _message(BuildContext context) async {
     final health = ServicesScope.of(context).health;
-    if (await health.pausedNow()) return 'The phone has paused FlowDroid. Schedules and triggers are waiting.';
-    final n = (await health.recentPauses()).length;
+    // Closing the warning hides what happened until then; a new pause shows it again.
+    final closed = await health.dismissedAt();
+    if (await health.pausedNow()) {
+      final last = await health.lastBeat();
+      if (closed == null || last == null || last.isAfter(closed)) {
+        return 'The phone has paused FlowDroid. Schedules and triggers are waiting.';
+      }
+      return null;
+    }
+    final n = (await health.recentPauses()).where((p) => closed == null || p.to.isAfter(closed)).length;
     if (n == 0) return null;
-    return n == 1 ? 'The phone paused FlowDroid once today.' : 'The phone paused FlowDroid $n times today.';
+    return n == 1
+        ? 'The phone paused FlowDroid once in the last day.'
+        : 'The phone paused FlowDroid $n times in the last day.';
   }
 
   @override
@@ -524,6 +539,14 @@ class _PausedHint extends StatelessWidget {
                   child: Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: c.text)),
                 ),
                 TextButton(onPressed: () => BackgroundSetupPage.open(context), child: const Text('Fix')),
+                IconButton(
+                  tooltip: 'Close',
+                  icon: const Icon(AppIcons.close, size: 18),
+                  onPressed: () async {
+                    await ServicesScope.of(context).health.dismiss();
+                    if (mounted) setState(() {});
+                  },
+                ),
               ],
             ),
           ),

@@ -48,6 +48,25 @@ void main() {
     expect(await health.recentPauses(), isEmpty, reason: 'only the last day counts');
   });
 
+  test('closing the pause warning is remembered, and the heartbeat keeps it', () async {
+    final dir = await Directory.systemTemp.createTemp('health');
+    var now = DateTime(2026, 11, 22, 8);
+    final health = BackgroundHealth(dir, clock: () => now, uptime: () => const Duration(days: 30));
+    await health.beat();
+    now = now.add(const Duration(minutes: 30));
+    await health.beat();
+    expect(await health.recentPauses(), hasLength(1));
+
+    await health.dismiss();
+    final closed = await health.dismissedAt();
+    expect(closed, now);
+    now = now.add(const Duration(minutes: 1));
+    await health.beat();
+    await health.restart();
+    expect(await health.dismissedAt(), closed, reason: 'beats and restarts must not forget it');
+    expect(await health.recentPauses(), hasLength(1), reason: 'the log itself keeps every pause');
+  });
+
   test('nextDue finds the earliest schedule, never in the past', () async {
     final repository = await tempRepository();
     var now = DateTime.utc(2026, 11, 22, 8);
