@@ -120,7 +120,9 @@ class BrowserDriver {
             ).timeout(Duration(milliseconds: timeoutMs * 2)),
           );
         } on TimeoutException {
-          results.add({'error': 'the steps did not finish within ${(timeoutMs / 1000).round()} s'});
+          results.add({
+            'error': 'the steps did not finish within ${(timeoutMs / 1000).round()} s${await glance(runSession)}',
+          });
         } on BrowserException catch (e) {
           results.add({'error': e.message});
         } on Exception catch (e) {
@@ -272,7 +274,10 @@ class BrowserDriver {
         final st = await _state(s).catchError((Object _) => <String, Object?>{});
         throw BrowserException('${_loggedOut(asString(st['url'], url))} (${e.message})');
       }
-      rethrow;
+      if (isRetryable(e.message)) rethrow;
+      // Say what the page showed: a block screen, an error banner or a pop-up names the
+      // real cause on any site, where the step's own error only says what it missed.
+      throw BrowserException('${e.message}${await glance(s)}');
     } finally {
       // Leave it up: a run of a few quick steps would otherwise flash on and off screen
       // before the person sees anything, and on a failure they can see where it stopped.
@@ -281,6 +286,26 @@ class BrowserDriver {
       try {
         await page.finished(s);
       } on Object catch (_) {}
+    }
+  }
+
+  /// What the page in [s] shows now, for an error message: its title and address, the
+  /// last pop-up it raised, and the start of its visible text. Empty if it can't be read.
+  Future<String> glance(String s) async {
+    try {
+      final g = await _act(s, 'fd.glance()').timeout(const Duration(seconds: 3));
+      final title = asString(g['title']).trim();
+      final where = asString(g['url']);
+      final text = asString(g['text']).trim();
+      final dialog = asString(g['dialog']).trim();
+      if (where.isEmpty && title.isEmpty) return '';
+      return [
+        '. The page was ${title.isEmpty ? where : '“$title” ($where)'}',
+        if (dialog.isNotEmpty) ', it showed a pop-up saying “$dialog”',
+        if (text.isNotEmpty) ' and it says: “$text”',
+      ].join();
+    } on Object catch (_) {
+      return '';
     }
   }
 
@@ -516,20 +541,34 @@ if (!window.__fd) {
     walk(document);
     return out;
   };
+  // Documents of embedded frames from the same site (login forms, editors, cookie
+  // banners often live there). Frames from other sites cannot be reached by any page.
+  const frameDocs = () => {
+    const out = [];
+    const walk = (doc) => { for (const f of doc.querySelectorAll('iframe,frame')) { try { const d = f.contentDocument; if (d && d.body) { out.push(d); walk(d); } } catch (e) {} } };
+    walk(document);
+    return out;
+  };
+  // Where to look, in order: the page, then its shadow roots, then its frames.
+  const scopes = () => [document, ...shadowRoots(), ...frameDocs()];
   const queryAll = (sel) => {
     let els;
     try { els = [...document.querySelectorAll(sel)]; } catch (e) { throw new Error('not a valid selector: ' + sel); }
     if (els.length) return els;
-    for (const r of shadowRoots()) els.push(...r.querySelectorAll(sel));
+    for (const r of scopes().slice(1)) els.push(...r.querySelectorAll(sel));
     return els;
+  };
+  const byText = (root, want) => {
+    const els = [...root.querySelectorAll(clickable)].filter(visible);
+    return els.find((e) => label(e).toLowerCase() === want) || els.find((e) => label(e).toLowerCase().includes(want))
+      || [...root.querySelectorAll('*')].find((e) => e.children.length === 0 && visible(e) && (e.innerText || e.textContent || '').trim().toLowerCase().includes(want));
   };
   const find = (t) => {
     if (/^\d+$/.test(t)) return document.querySelector('[data-fd-id="' + t + '"]');
     if (t.startsWith('text=')) {
       const want = t.slice(5).replace(/^"|"$/g, '').replace(/\\"/g, '"').trim().toLowerCase();
-      const els = queryAll(clickable).filter(visible);
-      return els.find((e) => label(e).toLowerCase() === want) || els.find((e) => label(e).toLowerCase().includes(want))
-        || [...document.querySelectorAll('body *')].find((e) => e.children.length === 0 && visible(e) && (e.innerText || '').trim().toLowerCase().includes(want));
+      for (const root of scopes()) { const e = byText(root, want); if (e) return e; }
+      return null;
     }
     // Pages often keep hidden copies (mobile and desktop menus): use the one that is showing.
     const els = queryAll(t);
@@ -588,6 +627,9 @@ if (!window.__fd) {
   try { new MutationObserver((m) => { window.__fdMutations += m.length; }).observe(document, {subtree: true, childList: true}); } catch (e) {}
   window.__fd = {
     state: () => ({ready: document.readyState, url: location.href, title: document.title, mutations: window.__fdMutations, net: window.__fdNet || 0}),
+    // What a person would see first: for error messages.
+    glance: () => ({url: location.href, title: document.title, dialog: window.__fdDialog || '',
+      text: (document.body ? document.body.innerText : '').replace(/\s+/g, ' ').trim().slice(0, 240)}),
     loginWall: () => ({value: [...document.querySelectorAll('input[type=password]')].some(visible)
       || /\/(login|log-in|signin|sign-in|sign_in|auth)(\/|$|\?)/i.test(location.pathname)}),
     present: (t) => ({value: (() => { const e = find(t); return !!e && visible(e); })()}),
@@ -596,7 +638,16 @@ if (!window.__fd) {
     click: (t) => { const e = need(t); e.scrollIntoView({block: 'center'}); tap(e); return {ok: true}; },
     type: (t, text) => {
       const e = need(t); e.scrollIntoView({block: 'center'}); e.focus && e.focus();
-      if (e.isContentEditable) { e.textContent = text; } else {
+      // Rich editors (Telegram, WhatsApp, Slack) only notice text that arrives like typing:
+      // replace the content with insertText, and set it directly only if that is refused.
+      if (e.isContentEditable) {
+        const sel = window.getSelection(); const range = document.createRange();
+        range.selectNodeContents(e); sel.removeAllRanges(); sel.addRange(range);
+        let typed = false;
+        try { typed = document.execCommand('insertText', false, text); } catch (x) {}
+        if (!typed) { e.textContent = text; e.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: text})); }
+        return {ok: true};
+      } else {
         const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), 'value');
         if (setter && setter.set) setter.set.call(e, text); else e.value = text;
       }
@@ -605,7 +656,14 @@ if (!window.__fd) {
     },
     press: (key) => {
       const e = document.activeElement || document.body;
-      for (const type of ['keydown', 'keypress', 'keyup']) e.dispatchEvent(new KeyboardEvent(type, {key, code: key, bubbles: true}));
+      // Many sites still read keyCode/which (13 for Enter), which synthetic events leave at 0.
+      const codes = {Enter: 13, Tab: 9, Escape: 27, Backspace: 8, ArrowDown: 40, ArrowUp: 38, ArrowLeft: 37, ArrowRight: 39, ' ': 32};
+      const keyCode = codes[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
+      for (const type of ['keydown', 'keypress', 'keyup']) {
+        const ev = new KeyboardEvent(type, {key, code: key === ' ' ? 'Space' : key, bubbles: true, cancelable: true, composed: true});
+        try { Object.defineProperty(ev, 'keyCode', {get: () => keyCode}); Object.defineProperty(ev, 'which', {get: () => keyCode}); } catch (x) {}
+        e.dispatchEvent(ev);
+      }
       if (key === 'Enter' && e.form) { e.form.requestSubmit ? e.form.requestSubmit() : e.form.submit(); }
       return {ok: true};
     },
@@ -656,7 +714,8 @@ if (!window.__fd) {
     final text = asString(input['text']);
     Future<JsonMap> act(String js) async {
       final r = await _act(s, js);
-      if (r['error'] case final String error) throw BrowserException(error);
+      // With what the page shows, so the AI can see a block screen or pop-up for itself.
+      if (r['error'] case final String error) throw BrowserException('$error${await glance(s)}');
       return r;
     }
 

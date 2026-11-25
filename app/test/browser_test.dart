@@ -15,6 +15,9 @@ class _FakePage implements BrowserPage {
   bool showFails = false;
   int mutations = 0;
 
+  /// The page's visible text, as fd.glance() reads it.
+  String glanceText = '';
+
   /// The page keeps changing until then (a ticker, a slow feed).
   DateTime? busyUntil;
 
@@ -41,6 +44,9 @@ class _FakePage implements BrowserPage {
     if (call.startsWith('fd.click("text=\\"Next\\"")')) url = 'https://shop.example/page2';
     if (call.startsWith('fd.click("3")')) url = 'https://evil.example/';
     if (call.startsWith('fd.present') || call.startsWith('fd.actionable')) return jsonEncode({'value': true});
+    if (call.startsWith('fd.glance')) {
+      return jsonEncode({'url': url, 'title': 'Shop', 'text': glanceText, 'dialog': ''});
+    }
     if (call.startsWith('fd.extract(".price", true')) {
       return jsonEncode({
         'value': ['9', '12'],
@@ -197,7 +203,7 @@ js document.title
         'timeoutMs': 5000,
       });
       final results = asMapList(r['results']);
-      expect(results.first, {'error': 'line 2: nothing on the page matches #missing'});
+      expect(results.first['error'], startsWith('line 2: nothing on the page matches #missing. The page was'));
       expect(asMap(results.last['data'])['name'], 'Cheap shoes');
     });
 
@@ -226,6 +232,21 @@ js document.title
       expect(page.calls.where((c) => c.startsWith('fd.click')), isEmpty);
     });
 
+    test('a failed step says what the page showed', () async {
+      page.glanceText = 'Too many tabs open. Close the other tab to continue.';
+      final r = await driver.call({
+        'runs': [
+          {'url': 'https://shop.example/', 'steps': 'click #missing'},
+        ],
+        'timeoutMs': 5000,
+      });
+      expect(
+        asMapList(r['results']).single['error'],
+        'line 1: nothing on the page matches #missing. The page was “Shop” (https://shop.example/) '
+        'and it says: “Too many tabs open. Close the other tab to continue.”',
+      );
+    });
+
     test('stops at the timeout', () async {
       final r = await driver.call({
         'runs': [
@@ -233,7 +254,7 @@ js document.title
         ],
         'timeoutMs': 50,
       });
-      expect(asMapList(r['results']).single['error'], 'the steps did not finish within 0 s');
+      expect(asMapList(r['results']).single['error'], startsWith('the steps did not finish within 0 s'));
     });
   });
 

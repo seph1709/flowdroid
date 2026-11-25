@@ -237,6 +237,8 @@ public class PhoneBridgePlugin implements FlutterPlugin, MethodChannel.MethodCal
                 Browser.close(session);
                 if (previous != null) previous.accept("");
                 try {
+                    // A workflow or the assistant may have the site open: one tab at a time.
+                    Browser.releaseSite(session, call.argument("url"));
                     Browser.session(context, session, false).web.loadUrl(call.argument("url"));
                 } catch (RuntimeException e) {
                     result.success(Browser.error(e.getMessage()));

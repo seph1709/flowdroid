@@ -126,6 +126,8 @@ final class Browser {
         s.setMediaPlaybackRequiresUserGesture(true);
         s.setBlockNetworkImage(fast);
         s.setLoadWithOverviewMode(true);
+        // Like Chrome: an https page may still load its plain-http images and scripts.
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         s.setUseWideViewPort(true);
         // Look like the phone's browser, not an embedded WebView, which some sites treat differently.
         s.setUserAgentString(s.getUserAgentString().replace("; wv", "").replaceAll("Version/\\d+(\\.\\d+)* ", ""));
@@ -144,6 +146,37 @@ final class Browser {
             public void onProgressChanged(WebView view, int progress) {
                 // Some pages report 100% well before (or instead of) onPageFinished.
                 if (progress >= 100 && session.started) loaded(session, view.getUrl());
+            }
+
+            // Nobody is there to answer a page's alert, confirm or prompt: without these the
+            // page's script waits forever and the run stalls. Accept, as a person would, and
+            // keep the message so the steps can read it (window.__fdDialog).
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, android.webkit.JsResult result) {
+                remember(view, message);
+                result.confirm();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, android.webkit.JsResult result) {
+                remember(view, message);
+                result.confirm();
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message, String defaultValue,
+                                      android.webkit.JsPromptResult result) {
+                remember(view, message);
+                result.confirm(defaultValue == null ? "" : defaultValue);
+                return true;
+            }
+
+            @Override
+            public boolean onJsBeforeUnload(WebView view, String url, String message, android.webkit.JsResult result) {
+                result.confirm();
+                return true;
             }
         });
         web.setWebViewClient(new WebViewClient() {
@@ -173,6 +206,17 @@ final class Browser {
                 // ERR_ABORTED: it is not an error of the page now loading.
                 if (String.valueOf(error.getDescription()).contains("ERR_ABORTED")) return;
                 session.finishLoad(error("could not load " + request.getUrl() + ": " + error.getDescription()));
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                // Never accept a bad certificate, but say so now instead of a blank page and a timeout.
+                handler.cancel();
+                // The page itself (not one of its images or scripts) is what failed.
+                boolean page = !session.started || (error.getUrl() != null && error.getUrl().equals(view.getUrl()));
+                if (page) {
+                    session.finishLoad(error("the site's security certificate is not valid (" + error.getUrl() + ")"));
+                }
             }
 
             @Override
@@ -216,6 +260,15 @@ final class Browser {
         SESSIONS.put(id, session);
         session.touch();
         return session;
+    }
+
+    /** Keeps the last dialog's text where the steps can read it. */
+    private static void remember(WebView view, String message) {
+        try {
+            view.evaluateJavascript("window.__fdDialog=" + org.json.JSONObject.quote(message == null ? "" : message), null);
+        } catch (Throwable ignored) {
+            // The page is going away.
+        }
     }
 
     private static void loaded(Session session, String url) {
@@ -365,8 +418,35 @@ final class Browser {
         }
     }
 
+    /**
+     * Lets [url]'s site be opened by session [keepId] only. All sessions share the site's
+     * storage, so a site that allows one open tab (Telegram Web, WhatsApp Web) sees a page
+     * another session left on it as a second tab and blocks the new one. Hidden sessions on
+     * that site are closed; one on screen is sent to a blank page instead.
+     */
+    static void releaseSite(String keepId, String url) {
+        String host = Uri.parse(url).getHost();
+        if (host == null) return;
+        for (Session other : new java.util.ArrayList<>(SESSIONS.values())) {
+            if (other.id.equals(keepId) || other.dead) continue;
+            String at = other.web.getUrl();
+            String otherHost = at == null ? null : Uri.parse(at).getHost();
+            if (otherHost == null || !otherHost.equalsIgnoreCase(host)) continue;
+            if (other.shown) {
+                try {
+                    other.web.loadUrl("about:blank");
+                } catch (Throwable ignored) {
+                    // Gone already.
+                }
+            } else {
+                close(other.id);
+            }
+        }
+    }
+
     /** Loads [url]; [done] gets `{url, title}` once it finished, or `{error}`. */
     static void open(Context context, String id, String url, boolean fast, long timeoutMs, Consumer<Map<String, Object>> done) {
+        releaseSite(id, url);
         Session session;
         try {
             session = session(context, id, fast);
