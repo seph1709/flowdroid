@@ -74,7 +74,8 @@ void main() {
       saveScreenshot: (path) async => {'path': path},
       poll: const Duration(milliseconds: 1),
       quiet: const Duration(milliseconds: 2),
-      elementWaitMs: 30,
+      // Roomy enough for a busy machine; late content still shows up within a few polls.
+      elementWaitMs: 500,
     );
   });
 

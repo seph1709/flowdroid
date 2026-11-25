@@ -1,4 +1,4 @@
-/// Small shared building blocks of the Calm Clarity design (see DESIGN.md).
+/// Small shared building blocks of the app's design (see DESIGN.md).
 library;
 
 import 'dart:math' as math;
@@ -118,6 +118,66 @@ class GlyphIcon extends StatelessWidget {
   }
 }
 
+/// A small label on a soft tint of [color], such as a workflow's trigger kind.
+class Tag extends StatelessWidget {
+  const Tag(this.text, {super.key, required this.color, this.icon});
+
+  final String text;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: dark ? 0.18 : 0.1),
+        borderRadius: BorderRadius.circular(Radii.tag),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[Icon(icon, size: 12, color: color), const SizedBox(width: 4)],
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color, fontSize: 11.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An icon on a small square of its own color's tint: how steps and workflows are marked.
+class IconTile extends StatelessWidget {
+  const IconTile({super.key, required this.icon, required this.color, this.size = 32});
+
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: dark ? 0.18 : 0.1),
+        borderRadius: BorderRadius.circular(size * 0.28),
+      ),
+      child: Icon(icon, size: size * 0.56, color: color),
+    );
+  }
+}
+
 /// A small heading above a group of rows or fields.
 class SectionLabel extends StatelessWidget {
   const SectionLabel(
@@ -152,10 +212,13 @@ class GroupedSection extends StatelessWidget {
     final c = AppColors.of(context);
     return Padding(
       padding: margin,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: ColoredBox(
-          color: c.grouped,
+      child: DecoratedBox(
+        decoration: c.card(),
+        // The card's white is a Material, so row taps show their ripple on it.
+        child: Material(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(Radii.card - 1),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               for (final (i, child) in children.indexed) ...[
@@ -267,9 +330,13 @@ class PillSwitch<T> extends StatelessWidget {
     final theme = Theme.of(context);
     final index = options.indexWhere((o) => o.value == value).clamp(0, options.length - 1);
     return Container(
-      height: 44,
+      height: 40,
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: c.grouped, borderRadius: BorderRadius.circular(13)),
+      // Darker than the grey page in light mode, so the track still reads as one.
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark ? c.grouped : c.hairline,
+        borderRadius: BorderRadius.circular(Radii.control),
+      ),
       child: LayoutBuilder(
         builder: (context, box) {
           final w = box.maxWidth / options.length;
@@ -286,7 +353,7 @@ class PillSwitch<T> extends StatelessWidget {
                   decoration: BoxDecoration(
                     // Raised above the track: white in light mode, a lighter grey in dark.
                     color: Theme.of(context).brightness == Brightness.dark ? c.outline : c.surface,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(Radii.control - 3),
                     boxShadow: [
                       BoxShadow(color: c.shadow, blurRadius: 1, offset: const Offset(0, 1)),
                       BoxShadow(color: c.shadow, blurRadius: 8, offset: const Offset(0, 2)),

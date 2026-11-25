@@ -59,7 +59,11 @@ class _NodePickerState extends State<NodePicker> {
                   _GroupHeader(group),
                   for (final t in types)
                     ListTile(
-                      leading: GlyphIcon.forType(type: t.type, group: t.group, size: 30),
+                      leading: IconTile(
+                        icon: NodeVisuals.icon(t.type),
+                        color: AppColors.of(context).groupColor(t.group),
+                        size: 32,
+                      ),
                       minLeadingWidth: 30,
                       horizontalTitleGap: Space.lg,
                       title: Text(t.label, style: Theme.of(context).textTheme.titleSmall),

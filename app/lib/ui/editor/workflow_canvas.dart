@@ -24,20 +24,9 @@ class WorkflowCanvas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    // A softly lit board: a cool wash with light falling from the top, fixed to the
-    // screen, under a grid that moves with the nodes.
+    // A flat grey board, the same grey as the page, under a dot grid that moves with the nodes.
     return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: const Alignment(0, -1.1),
-          radius: 1.5,
-          colors: dark
-              ? [const Color(0xFF1B1D24), c.canvas, const Color(0xFF0E0F12)]
-              : [const Color(0xFFFFFFFF), const Color(0xFFF3F5F9), const Color(0xFFE9ECF2)],
-          stops: const [0, 0.55, 1],
-        ),
-      ),
+      decoration: BoxDecoration(color: c.canvas),
       child: InteractiveViewer(
         transformationController: transformation,
         constrained: false,
@@ -55,11 +44,7 @@ class WorkflowCanvas extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: GridPainter(
-                        minor: (dark ? Colors.white : const Color(0xFF3B4A66)).withValues(alpha: dark ? 0.09 : 0.15),
-                      ),
-                    ),
+                    child: CustomPaint(painter: GridPainter(minor: c.textTertiary.withValues(alpha: 0.35))),
                   ),
                 ),
                 Positioned.fill(

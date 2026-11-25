@@ -3,7 +3,8 @@ import 'package:material_ui/material_ui.dart';
 import '../core/node_catalog.dart';
 import 'icons.dart';
 
-/// Calm Clarity: the app's design tokens and Material theme (see DESIGN.md).
+/// The app's design tokens and Material theme (see DESIGN.md): white cards with
+/// hairline borders on a soft grey page, small radii, compact Inter type.
 abstract final class AppTheme {
   static const fontFamily = 'Inter';
   static const monoFamily = 'JetBrains Mono';
@@ -45,7 +46,7 @@ abstract final class AppTheme {
       surfaceTint: Colors.transparent,
     );
     final text = _textTheme(c);
-    final radius12 = BorderRadius.circular(12);
+    final radius = BorderRadius.circular(Radii.control);
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
@@ -74,9 +75,9 @@ abstract final class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: c.accent,
           foregroundColor: Colors.white,
-          minimumSize: const Size(44, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: const StadiumBorder(),
+          minimumSize: const Size(44, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          shape: RoundedRectangleBorder(borderRadius: radius),
           textStyle: text.labelLarge,
           elevation: 0,
         ),
@@ -86,31 +87,35 @@ abstract final class AppTheme {
           foregroundColor: c.accent,
           minimumSize: const Size(44, 44),
           textStyle: text.labelLarge,
-          shape: RoundedRectangleBorder(borderRadius: radius12),
+          shape: RoundedRectangleBorder(borderRadius: radius),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: c.text,
-          minimumSize: const Size(44, 44),
+          backgroundColor: c.surface,
+          minimumSize: const Size(44, 42),
           side: BorderSide(color: c.outline),
           textStyle: text.labelLarge,
-          shape: RoundedRectangleBorder(borderRadius: radius12),
+          shape: RoundedRectangleBorder(borderRadius: radius),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: c.textSecondary,
           minimumSize: const Size(44, 44),
-          shape: RoundedRectangleBorder(borderRadius: radius12),
+          shape: RoundedRectangleBorder(borderRadius: radius),
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: c.accent,
         foregroundColor: Colors.white,
-        elevation: 2,
-        highlightElevation: 4,
-        shape: const CircleBorder(),
+        elevation: 0,
+        focusElevation: 0,
+        hoverElevation: 0,
+        highlightElevation: 0,
+        extendedTextStyle: text.labelLarge,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.card)),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: const WidgetStatePropertyAll(Colors.white),
@@ -119,18 +124,24 @@ abstract final class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: c.grouped,
+        fillColor: c.surface,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         hintStyle: text.bodyMedium?.copyWith(color: c.textTertiary),
-        border: OutlineInputBorder(borderRadius: radius12, borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: radius12, borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: BorderSide(color: c.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: radius,
+          borderSide: BorderSide(color: c.outline),
+        ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: radius12,
-          borderSide: BorderSide(color: c.accent, width: 1.5),
+          borderRadius: radius,
+          borderSide: BorderSide(color: c.accent, width: 1.2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: radius12,
+          borderRadius: radius,
           borderSide: BorderSide(color: c.danger, width: 1.5),
         ),
         prefixIconColor: c.textTertiary,
@@ -142,21 +153,24 @@ abstract final class AppTheme {
         showDragHandle: true,
         dragHandleColor: c.outline,
         dragHandleSize: const Size(36, 4),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.sheet))),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: c.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.sheet)),
         titleTextStyle: text.titleLarge,
         contentTextStyle: text.bodyMedium?.copyWith(color: c.textSecondary),
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: c.surface,
         surfaceTintColor: Colors.transparent,
-        elevation: 6,
-        shadowColor: Colors.black.withValues(alpha: 0.18),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 4,
+        shadowColor: Colors.black.withValues(alpha: 0.12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.card),
+          side: BorderSide(color: c.hairline),
+        ),
         textStyle: text.bodyMedium,
       ),
       snackBarTheme: SnackBarThemeData(
@@ -164,15 +178,15 @@ abstract final class AppTheme {
         backgroundColor: c.text,
         contentTextStyle: text.bodyMedium?.copyWith(color: c.background),
         actionTextColor: c.accentSoft,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
         elevation: 0,
       ),
       tabBarTheme: TabBarThemeData(
-        labelColor: c.text,
-        unselectedLabelColor: c.textTertiary,
+        labelColor: c.accent,
+        unselectedLabelColor: c.textSecondary,
         labelStyle: text.labelLarge,
-        unselectedLabelStyle: text.labelLarge,
-        indicatorColor: c.accent,
+        unselectedLabelStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+        indicator: UnderlineTabIndicator(borderSide: BorderSide(color: c.accent, width: 2)),
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: c.hairline,
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
@@ -182,7 +196,7 @@ abstract final class AppTheme {
         titleTextStyle: text.bodyLarge,
         subtitleTextStyle: text.bodySmall?.copyWith(color: c.textSecondary),
         iconColor: c.textSecondary,
-        minVerticalPadding: 12,
+        minVerticalPadding: 10,
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(color: c.accent),
       segmentedButtonTheme: SegmentedButtonThemeData(
@@ -194,14 +208,25 @@ abstract final class AppTheme {
             (s) => s.contains(WidgetState.selected) ? c.accent : c.textSecondary,
           ),
           side: WidgetStatePropertyAll(BorderSide(color: c.outline)),
+          shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: radius)),
           textStyle: WidgetStatePropertyAll(text.labelLarge),
         ),
       ),
       tooltipTheme: TooltipThemeData(
-        decoration: BoxDecoration(color: c.text, borderRadius: BorderRadius.circular(8)),
+        decoration: BoxDecoration(color: c.text, borderRadius: BorderRadius.circular(Radii.tag)),
         textStyle: text.bodySmall?.copyWith(color: c.background),
       ),
       badgeTheme: BadgeThemeData(backgroundColor: c.danger, textColor: Colors.white),
+      chipTheme: ChipThemeData(
+        backgroundColor: c.surface,
+        side: BorderSide(color: c.outline),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.tag)),
+        labelStyle: text.labelMedium?.copyWith(color: c.text),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        side: BorderSide(color: c.outline, width: 1.5),
+      ),
     );
   }
 
@@ -215,20 +240,35 @@ abstract final class AppTheme {
       color: color ?? c.text,
     );
     return TextTheme(
-      headlineMedium: s(28, FontWeight.w700, height: 1.15, tracking: -0.56),
-      titleLarge: s(20, FontWeight.w600, height: 1.2, tracking: -0.2),
-      titleMedium: s(17, FontWeight.w600, height: 1.25, tracking: -0.17),
-      titleSmall: s(15, FontWeight.w600, height: 1.3, tracking: -0.1),
-      bodyLarge: s(15, FontWeight.w400, height: 1.45),
-      bodyMedium: s(15, FontWeight.w400, height: 1.45),
-      bodySmall: s(13, FontWeight.w400, height: 1.35, color: c.textSecondary),
-      labelLarge: s(15, FontWeight.w600, height: 1.2),
-      labelMedium: s(13, FontWeight.w500, height: 1.2, color: c.textSecondary),
-      labelSmall: s(12, FontWeight.w600, height: 1.2, tracking: 0.1, color: c.textTertiary),
+      headlineMedium: s(24, FontWeight.w600, height: 1.2, tracking: -0.5),
+      titleLarge: s(19, FontWeight.w600, height: 1.25, tracking: -0.3),
+      titleMedium: s(15.5, FontWeight.w600, height: 1.3, tracking: -0.15),
+      titleSmall: s(14, FontWeight.w600, height: 1.3, tracking: -0.1),
+      bodyLarge: s(14.5, FontWeight.w400, height: 1.45),
+      bodyMedium: s(14, FontWeight.w400, height: 1.45),
+      bodySmall: s(12.5, FontWeight.w400, height: 1.4, color: c.textSecondary),
+      labelLarge: s(14, FontWeight.w600, height: 1.2),
+      labelMedium: s(12.5, FontWeight.w500, height: 1.2, color: c.textSecondary),
+      labelSmall: s(11, FontWeight.w600, height: 1.2, tracking: 0.5, color: c.textTertiary),
     );
   }
 
   static const monospace = TextStyle(fontFamily: monoFamily, fontSize: 13, height: 1.45);
+}
+
+/// Corner radii: small and consistent, never pills.
+abstract final class Radii {
+  /// Tags and badges.
+  static const tag = 6.0;
+
+  /// Buttons, fields and small tiles.
+  static const control = 10.0;
+
+  /// Cards, steps on the canvas, menus.
+  static const card = 12.0;
+
+  /// Bottom sheets and dialogs.
+  static const sheet = 16.0;
 }
 
 /// Spacing steps (dp), on a 4-pt base.
@@ -269,16 +309,17 @@ class AppColors extends ThemeExtension<AppColors> {
   });
 
   static const light = AppColors(
-    background: Color(0xFFFFFFFF),
-    canvas: Color(0xFFFAFAFB),
+    // A soft grey page; cards and sheets are white on it.
+    background: Color(0xFFF4F4F5),
+    canvas: Color(0xFFF4F4F5),
     surface: Color(0xFFFFFFFF),
-    grouped: Color(0xFFF4F4F6),
-    hairline: Color(0xFFECECEF),
-    outline: Color(0xFFD6D6DB),
-    switchOff: Color(0xFFE4E4E8),
-    text: Color(0xFF1C1C1E),
-    textSecondary: Color(0xFF6E6E73),
-    textTertiary: Color(0xFF8A8A8E),
+    grouped: Color(0xFFF1F1F3),
+    hairline: Color(0xFFE7E7EA),
+    outline: Color(0xFFDCDCE0),
+    switchOff: Color(0xFFE4E4E7),
+    text: Color(0xFF18181B),
+    textSecondary: Color(0xFF6B6B73),
+    textTertiary: Color(0xFF9A9AA2),
     accent: Color(0xFF2F7CF6),
     accentSoft: Color(0xFFE6F0FE),
     success: Color(0xFF2E9E52),
@@ -303,12 +344,12 @@ class AppColors extends ThemeExtension<AppColors> {
   );
 
   static const dark = AppColors(
-    background: Color(0xFF111113),
-    canvas: Color(0xFF151517),
-    surface: Color(0xFF1C1C1F),
-    grouped: Color(0xFF232327),
-    hairline: Color(0xFF2A2A2E),
-    outline: Color(0xFF3A3A40),
+    background: Color(0xFF0E0E10),
+    canvas: Color(0xFF0E0E10),
+    surface: Color(0xFF18181B),
+    grouped: Color(0xFF222226),
+    hairline: Color(0xFF29292E),
+    outline: Color(0xFF36363C),
     switchOff: Color(0xFF3A3A40),
     text: Color(0xFFF2F2F4),
     textSecondary: Color(0xFFA1A1A8),
@@ -367,9 +408,31 @@ class AppColors extends ThemeExtension<AppColors> {
 
   /// The soft shadow used by nodes and floating controls.
   List<BoxShadow> get softShadow => [
-    BoxShadow(color: shadow, blurRadius: 2, offset: const Offset(0, 1)),
-    BoxShadow(color: shadow, blurRadius: 12, offset: const Offset(0, 3)),
+    BoxShadow(
+      color: shadow.withValues(alpha: shadow.a * 0.6),
+      blurRadius: 2,
+      offset: const Offset(0, 1),
+    ),
+    BoxShadow(
+      color: shadow.withValues(alpha: shadow.a * 0.5),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
+    ),
   ];
+
+  /// A white card on the grey page: hairline border and a barely-there shadow.
+  BoxDecoration card({double radius = Radii.card}) => BoxDecoration(
+    color: surface,
+    borderRadius: BorderRadius.circular(radius),
+    border: Border.all(color: hairline),
+    boxShadow: [
+      BoxShadow(
+        color: shadow.withValues(alpha: shadow.a * 0.4),
+        blurRadius: 3,
+        offset: const Offset(0, 1),
+      ),
+    ],
+  );
 
   @override
   AppColors copyWith() => this;

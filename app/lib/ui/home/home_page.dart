@@ -146,12 +146,14 @@ class HomePage extends StatelessWidget {
                     SliverFillRemaining(hasScrollBody: false, child: _EmptyState(onCreate: () => _create(context)))
                   else ...[
                     SliverToBoxAdapter(child: _BackgroundHint(workflows: workflows)),
-                    SliverList.separated(
-                      itemCount: workflows.length,
-                      separatorBuilder: (_, _) =>
-                          Divider(indent: Space.page + 40 + Space.md, color: AppColors.of(context).hairline),
-                      itemBuilder: (context, i) =>
-                          _WorkflowRow(workflow: workflows[i], onOpen: () => _open(context, workflows[i])),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                      sliver: SliverList.separated(
+                        itemCount: workflows.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
+                        itemBuilder: (context, i) =>
+                            _WorkflowRow(workflow: workflows[i], onOpen: () => _open(context, workflows[i])),
+                      ),
                     ),
                     const SliverToBoxAdapter(child: SizedBox(height: 120)),
                   ],
@@ -161,10 +163,11 @@ class HomePage extends StatelessWidget {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         tooltip: 'New workflow',
         onPressed: () => _create(context),
-        child: const Icon(AppIcons.add, size: 28),
+        icon: const Icon(AppIcons.add, size: 20),
+        label: const Text('New workflow'),
       ),
     );
   }
@@ -188,7 +191,7 @@ class _NewWorkflowSheet extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: Space.page, vertical: Space.md),
         child: Row(
           children: [
-            GlyphIcon(icon: icon, color: color, size: 32),
+            IconTile(icon: icon, color: color, size: 34),
             const SizedBox(width: Space.md),
             Expanded(
               child: Column(
@@ -329,48 +332,70 @@ class _WorkflowRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final services = ServicesScope.of(context);
     final theme = Theme.of(context);
+    final c = AppColors.of(context);
     final trigger = workflow.nodes.where((n) => services.nodeType(n.type)?.isTrigger ?? false).firstOrNull;
-    return InkWell(
-      onTap: onOpen,
-      onLongPress: () => _menu(context),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(Space.page, Space.md, Space.md, Space.md),
-        child: Row(
-          children: [
-            // Every row's icon is a trigger, so color would say nothing; it dims when the workflow is off.
-            GlyphIcon(
-              icon: NodeVisuals.icon(trigger?.type ?? ''),
-              color: workflow.active ? AppColors.of(context).text : AppColors.of(context).textTertiary,
-              size: 36,
+    final group = trigger == null ? null : services.nodeType(trigger.type)?.group;
+    // The trigger's color marks what starts the workflow; grey while it is switched off.
+    final color = workflow.active && group != null ? c.groupColor(group) : c.textTertiary;
+    final steps = workflow.nodes.length;
+    return DecoratedBox(
+      decoration: c.card(),
+      child: Material(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(Radii.card - 1),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          onLongPress: () => _menu(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Space.md, Space.md, Space.xs, Space.md),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IconTile(icon: NodeVisuals.icon(trigger?.type ?? ''), color: color, size: 36),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        workflow.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          Tag(triggerSummary(trigger?.type, trigger?.params), color: color),
+                          Tag(steps == 1 ? '1 step' : '$steps steps', color: c.textSecondary),
+                        ],
+                      ),
+                      const SizedBox(height: Space.sm),
+                      _LastRun(workflow: workflow),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: workflow.active,
+                  onChanged: (active) => services.repository.saveWorkflow(workflow..active = active),
+                ),
+              ],
             ),
-            const SizedBox(width: Space.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(workflow.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 2),
-                  _LastRun(workflow: workflow, triggerLabel: triggerSummary(trigger?.type, trigger?.params)),
-                ],
-              ),
-            ),
-            Switch(
-              value: workflow.active,
-              onChanged: (active) => services.repository.saveWorkflow(workflow..active = active),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// "Every 15 min · ran 5 min ago" with a small status mark.
+/// "Ran 5 min ago" with a small status mark.
 class _LastRun extends StatelessWidget {
-  const _LastRun({required this.workflow, required this.triggerLabel});
+  const _LastRun({required this.workflow});
 
   final Workflow workflow;
-  final String triggerLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -380,13 +405,13 @@ class _LastRun extends StatelessWidget {
       future: ServicesScope.of(context).repository.latestExecution(workflow.id),
       builder: (context, snapshot) {
         final last = snapshot.data;
-        if (last == null) return Text('$triggerLabel · never run', style: style, maxLines: 1);
+        if (last == null) return Text('Never run', style: style, maxLines: 1);
         final ok = last.status == ExecutionStatus.success;
         return Row(
           children: [
             Flexible(
               child: Text(
-                '$triggerLabel · ran ${formatRelative(last.startedAt)}',
+                'Ran ${formatRelative(last.startedAt)}',
                 style: style,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -441,7 +466,7 @@ class _BackgroundHint extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
           child: Material(
             color: c.accentSoft,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(Radii.card),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md),
               child: Row(
@@ -488,7 +513,7 @@ class _PausedHint extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
         child: Material(
           color: c.warningSoft,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(Radii.card),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md),
             child: Row(

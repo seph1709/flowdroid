@@ -138,7 +138,7 @@ class _Header extends StatelessWidget {
         children: [
           Row(
             children: [
-              GlyphIcon(icon: NodeVisuals.icon(node.type), color: accent, size: 40),
+              IconTile(icon: NodeVisuals.icon(node.type), color: accent, size: 40),
               const SizedBox(width: Space.lg),
               Expanded(
                 child: Column(

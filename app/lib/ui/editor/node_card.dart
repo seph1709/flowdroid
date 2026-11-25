@@ -6,7 +6,7 @@ import '../theme.dart';
 import 'canvas_geometry.dart';
 import 'editor_controller.dart';
 
-/// One step on the canvas: a soft white tile with its icon, name, type and run status, plus its ports.
+/// One step on the canvas: a white card with its tinted icon, name, type and run status, plus its ports.
 class NodeCard extends StatelessWidget {
   const NodeCard({super.key, required this.controller, required this.node, required this.onOpen, required this.onMenu});
 
@@ -28,7 +28,7 @@ class NodeCard extends StatelessWidget {
     final size = CanvasGeometry.nodeSize;
     final connectingHere = controller.connecting?.nodeId == node.id;
     final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(type?.isTrigger ?? false ? 32 : 14),
+      borderRadius: BorderRadius.circular(Radii.card),
       side: BorderSide(
         color: switch (status) {
           RunState.running => c.accent,
@@ -74,7 +74,11 @@ class NodeCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: Space.md),
                           child: Row(
                             children: [
-                              GlyphIcon.forType(type: node.type, group: type?.group, size: 30),
+                              IconTile(
+                                icon: NodeVisuals.icon(node.type),
+                                color: type == null ? c.textSecondary : c.groupColor(type.group),
+                                size: 32,
+                              ),
                               const SizedBox(width: Space.md),
                               Expanded(
                                 child: Column(
