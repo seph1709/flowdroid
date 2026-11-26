@@ -34,22 +34,6 @@ Most automation tools run on someone else's computer in the cloud. FlowDroid
 runs entirely on your phone, so your messages, files and passwords never
 leave it, and there's nothing to host or pay for.
 
-## What you can build
-
-- **A morning briefing.** At 7 a.m., fetch the weather and today's calendar,
-  have an AI turn it into a short summary, and read it out loud.
-- **Forward important texts.** When a message from your bank or a login code
-  arrives, send it straight to your Telegram.
-- **A phone that knows where you are.** Switch to vibrate when you get to
-  work, and back to normal when you leave.
-- **A memory for things you read.** Share an article or a PDF to FlowDroid
-  and it saves the text. Later, ask a question and it finds the answer in
-  everything you've saved.
-- **A website watcher.** Open a site, log in, read a price or a status, and
-  get a notification when it changes.
-- **A personal AI assistant on Telegram.** Message your own bot, and an AI
-  replies right away, from your phone.
-
 ## What it can do
 
 **Start a workflow when**
