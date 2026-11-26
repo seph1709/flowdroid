@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/Rust-000000.svg?logo=rust&logoColor=white" alt="Rust">
 </p>
 
+<p align="center">
+  <img src="docs/preview.png" alt="FlowDroid on three phones: a workflow on the editor canvas, the list of workflows with their triggers and last runs, and the New workflow sheet with templates">
+</p>
+
 ---
 
 FlowDroid turns your phone into its own automation hub. You build a
